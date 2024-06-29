@@ -1,0 +1,37 @@
+{
+  "clients": [
+    {
+      "API_KEY": "",
+      "SECRET_KEY": "",
+      "CLIENT_ID": "Everstrike MM",
+      "OPTIONS": {
+        "PAIRS": ["USD_ETH_PERP"],
+        "NUM_ORDERS": 2,
+        "MIN_ORDERS": 0,
+        "ORDER_PLACEMENT_INTERVAL": 10000,
+        "PAIR_OPTIONS": {
+          "BTC/USD": {
+            "base": 0.10,
+            "quote": 0.10,
+            "spread_multiplier": 3,
+            "order_placement_interval": 10000,
+            "zero_pos_if_pos_bigger_than": 10000000,
+            "buy": true,
+            "sell": true,
+            "use_index": true,
+            "use_mark": false,
+            "is_perp": true,
+            "floor": 0.05,
+            "mark_index_spread": 0.00000,
+            "submit_even_on_price_changed": true,
+            "price_changed_num_orders": 0,
+            "refresh_factor": 0.00,
+            "spread_buffer": 0.01,
+            "stale_buffer": 2,
+            "scale_fn_base": 1.1
+          }
+        }
+      }
+    }
+  ]
+}
