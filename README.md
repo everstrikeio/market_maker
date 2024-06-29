@@ -19,7 +19,7 @@ Connect with Everstrike on social media:
 
 ## Requirements
 
-- Docker `v20.10.8`
+- Docker
 - An Everstrike account with an API key and a secret key
 
 ## Local Setup
