@@ -5,7 +5,7 @@
       "SECRET_KEY": "",
       "CLIENT_ID": "Everstrike MM",
       "OPTIONS": {
-        "PAIRS": ["USD_ETH_PERP"],
+        "PAIRS": ["USD_BTC_PERP"],
         "NUM_ORDERS": 2,
         "MIN_ORDERS": 0,
         "ORDER_PLACEMENT_INTERVAL": 10000,
@@ -13,7 +13,7 @@
           "BTC/USD": {
             "base": 0.10,
             "quote": 0.10,
-            "spread_multiplier": 3,
+            "spread_multiplier": 50,
             "order_placement_interval": 10000,
             "zero_pos_if_pos_bigger_than": 10000000,
             "buy": true,
