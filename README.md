@@ -12,7 +12,7 @@ Connect with Everstrike on social media:
 - Support for 120+ trading pairs (options, futures and spot)
 - Plug and play (just set your API key and secret key)
 - Minimal dependencies (Node-fetch, WS and Async-Limiter)
-- Extremely customizable (more than 40 custom parameters)
+- Customizable (more than 40 custom parameters)
 - Battle tested (has been running on Everstrike Testnet for more than a year)
 - Extendable (based on the popular CCXT crypto trading library)
 - MIT license
