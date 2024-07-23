@@ -380,7 +380,7 @@ async function submit_orders_in_bulk_internal(client, pair, orders, min_qty, min
     var pair_symbol = pair;
     return price && price !== Infinity ? {pair: pair_symbol, qty: e.qty, price: price, side: side.toUpperCase(), ks: should_ks, post_only: should_post_only, leverage: 1, reduce_only: should_reduce_only} : undefined;
   }).filter(e => e);
-  return orders_payload.length > 0 && is_still_good_price(client, pair, options, best_bid, best_ask) && sigtermed === false ? await submit_orders(pair, client, options, {recv_window: options.RECV_WINDOW, orders: orders_payload}, 0) : null;
+  return orders_payload.length > 0 && is_still_good_price(client, pair, options, best_bid, best_ask) && sigtermed === false ? await submit_orders_everstrike(pair, client, options, {recv_window: options.RECV_WINDOW, orders: orders_payload}, 0) : null;
 }
 
 function is_still_good_price(client, pair, options, best_bid, best_ask) {
@@ -393,7 +393,7 @@ function is_still_good_price(client, pair, options, best_bid, best_ask) {
   return bid_is_good && ask_is_good ? true : false;
 }
 
-async function submit_orders(pair, client, options, payload, tries) {
+async function submit_orders_everstrike(pair, client, options, payload, tries) {
   try {
     for (var order of false ? [] : payload.orders) {
       console.info(get_time_string() + " " + client.name + " is placing a " + pair + " " + order.side.toLowerCase() + " order with price " + (order.price || 0).toFixed(6));
