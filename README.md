@@ -2,11 +2,6 @@
 
 A simple Everstrike market making bot.
 
-Connect with Everstrike on social media:
-
-- [twitter.com/everstrike_io](https://twitter.com/everstrike_io)
-- [t.me/everstrike_io](https://t.me/everstrike_io)
-
 ## Features
 
 - Support for 120+ trading pairs (options, futures and spot)
@@ -67,7 +62,7 @@ Specify the pairs to include in config/config.json:
   "PAIRS": ["USD_BTC_PERP", "USD_ETH_PERP", "USD_BTCCALL_PERP"],
 ```
 
-Available pairs can be obtained through the following API endpoint:
+Available pairs can be obtained through the /pairs API endpoint:
 
 [https://api.testnet.everstrike.io/pairs](https://api.testnet.everstrike.io/pairs)
 
