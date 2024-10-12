@@ -927,6 +927,7 @@ function create_server(options) {
       res.writeHead(200, {'Content-Type': 'application/json'});
       var long_bias = req.params ? req.params.long_bias : null;
       var volatility_bias = req.params ? req.params.volatility_bias : null;
+      var spread_multiplier = req.params ? req.params.spread_multiplier : null;
       var pair = req.params ? req.params.pair : null;
       var name = req.params ? req.params.name : null;
       var options = name ? client_options[name] : null;
@@ -934,8 +935,9 @@ function create_server(options) {
       if (pair_options) {
         if (long_bias || long_bias === 0) pair_options.long_bias = long_bias;
         if (volatility_bias || volatility_bias === 0) pair_options.volatility_bias = volatility_bias;
+        if (spread_multiplier || spread_multiplier === 0) pair_options.spread_multiplier = spread_multiplier;
       }
-      return pair_options ? res.end(JSON.stringify({success: true, pair: pair, long_bias: pair_options.long_bias, volatility_bias: pair_options.volatility_bias})) : res.end(JSON.stringify({success: false, reason: "Unknown client or pair"}));
+      return pair_options ? res.end(JSON.stringify({success: true, pair: pair, long_bias: pair_options.long_bias, volatility_bias: pair_options.volatility_bias, spread_multiplier: pair_options.spread_multiplier})) : res.end(JSON.stringify({success: false, reason: "Unknown client or pair"}));
     }
     res.writeHead(404, {'Content-Type': 'text/plain'});
     return res.end('not found');
