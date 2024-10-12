@@ -129,7 +129,9 @@ Available endpoints:
 - localhost:8081/orders
 - localhost:8081/positions
 - localhost:8081/balances
-- localhost:8081/configure?pair=<PAIR>&name=<CLIENT_ID>&long_bias=<LONG_BIAS>&volatility_bias=<VOLATILITY_BIAS>&spread_multiplier=<SPREAD_MULTIPLIER>
+- localhost:8081/configure?pair=USD_BTC_PERP&name=Everstrike_MM&long_bias=0.00&volatility_bias=0.00&spread_multiplier=50
+
+The /configure endpoint mutates internal server state. You can use it to change the long bias, volatility bias and spread for a specific pair, while the bot is running.
 
 ## Running without Docker
 
