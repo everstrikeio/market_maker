@@ -232,6 +232,7 @@ async function submit_orders(client, pair, options, price_changed) {
   var baseline_price = should_use_mark ? mark : index;
   var mark_spread_ratio = (get_pair_options(pair, options).mark_index_spread * 1);
   var long_bias = get_pair_options(pair, options).long_bias || 0;
+  var volatility_bias = call || put ? get_pair_options(pair, options).volatility_bias || 0 : 0;
   long_bias = put ? -long_bias : long_bias;
   bid = should_use_baseline ? baseline_price * (1-mark_spread_ratio) : bid;
   ask = should_use_baseline ? baseline_price * (1+mark_spread_ratio) : ask;
@@ -239,6 +240,8 @@ async function submit_orders(client, pair, options, price_changed) {
   var bias_multiplier = 1 / price_underlying_ratio;
   bid = long_bias < 0 && long_bias && bias_multiplier ? bid - (bid * Math.min(1, Math.abs(long_bias || 0) * bias_multiplier)) : bid;
   ask = long_bias > 0 && long_bias && bias_multiplier ? ask + (ask * Math.abs(long_bias || 0) * bias_multiplier) : ask;
+  bid = volatility_bias < 0 && volatility_bias && bias_multiplier ? bid - (bid * Math.min(1, Math.abs(volatility_bias || 0) * bias_multiplier)) : bid;
+  ask = volatility_bias > 0 && volatility_bias && bias_multiplier ? ask + (ask * Math.abs(volatility_bias || 0) * bias_multiplier) : ask;
   mid = should_use_baseline ? baseline_price : mid;
   spread = should_use_baseline ? ask - bid : spread;
   var num_orders_buy = 0;
