@@ -92,22 +92,101 @@ You can configure the spread in config/config.json:
 
 ## Configuring long bias
 
-By default, the bot runs with a neutral long bias.
+By default, the bot runs with a neutral long bias. 
 
-You can configure the long bias in config/config.json:
+You can configure the long bias in config/config.json.
+
+Positive long bias:
 
 ```javascript
   "long_bias": 0.01,
+```
+
+Negative long bias (short bias):
+
+```javascript
+  "long_bias": -0.01,
 ```
 
 ## Configuring volatility bias
 
 By default, the bot runs with a neutral volatility bias.
 
-You can configure the volatility bias in config/config.json:
+You can configure the volatility bias in config/config.json.
+
+Positive volatility bias (long volality):
+
+```javascript
+  "volatility_bias": 0.01,
+```
+
+Negative volatility bias (short volatility):
 
 ```javascript
   "volatility_bias": -0.01,
+```
+
+The volatility bias only works for options pairs.
+
+## Configuring order quantity
+
+By default, the bot aims to utilize 10% of your balance.
+
+You can configure the balance target in config/config.json.
+
+For perpetual contracts, modify the "base" property:
+
+```javascript
+  "base": 0.30,
+```
+
+For spot trading, modify both the "base" and the "quote" properties:
+
+```javascript
+  "base": 0.30,
+  "quote": 0.40,
+```
+
+## Turning off buy or sell orders
+
+You may want to make the bot quote in one direction only.
+
+To do so, set "buy" or "sell" to false in config/config.json:
+
+```javascript
+  "buy": true,
+  "sell": false,
+```
+
+## Order placement interval
+
+By default, the bot places orders every 10 seconds.
+
+You can configure the order placement interval in config/config.json:
+
+```javascript
+  "order_placement_interval": 20000,
+```
+
+## Maximum exposure
+
+By default, the bot stops placing new orders if your exposure (combined notional value of all open positions) is greater than $10,000,000.
+
+You can configure the maximum exposure in config/config.json:
+
+```javascript
+  "zero_pos_if_pos_bigger_than": 100000,
+```
+
+## Pricing source
+
+By default, the bot uses the Everstrike Index Price as pricing source.
+
+You can change the pricing source to the Everstrike Mark Price in config/config.json:
+
+```javascript
+  "use_index": false,
+  "use_mark": true,
 ```
 
 ## Further customization
