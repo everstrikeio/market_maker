@@ -226,10 +226,19 @@ async function submit_orders(client, pair, options, price_changed) {
   var index_entry = ticker || indices[client.name][pair];
   var mark = index_entry && index_entry.mark_price ? index_entry.mark_price : null;
   var index = index_entry && index_entry[get_price_to_use(pair)] ? index_entry[get_price_to_use(pair)] : null;
+  var underlying = index_entry && index_entry.underlying_price ? index_entry.underlying_price : null;
+  var call = index_entry && index_entry.call ? index_entry.call : false;
+  var put = index_entry && index_entry.put ? index_entry.put : false;
   var baseline_price = should_use_mark ? mark : index;
   var mark_spread_ratio = (get_pair_options(pair, options).mark_index_spread * 1);
+  var long_bias = get_pair_options(pair, options).long_bias || 0;
+  long_bias = put ? -long_bias : long_bias;
   bid = should_use_baseline ? baseline_price * (1-mark_spread_ratio) : bid;
   ask = should_use_baseline ? baseline_price * (1+mark_spread_ratio) : ask;
+  var price_underlying_ratio = underlying ? baseline_price / underlying : 1;
+  var bias_multiplier = 1 / price_underlying_ratio;
+  bid = long_bias < 0 && long_bias && bias_multiplier ? bid - (bid * Math.min(1, Math.abs(long_bias || 0) * bias_multiplier)) : bid;
+  ask = long_bias > 0 && long_bias && bias_multiplier ? ask + (ask * Math.abs(long_bias || 0) * bias_multiplier) : ask;
   mid = should_use_baseline ? baseline_price : mid;
   spread = should_use_baseline ? ask - bid : spread;
   var num_orders_buy = 0;
@@ -396,7 +405,7 @@ function is_still_good_price(client, pair, options, best_bid, best_ask) {
 async function submit_orders_everstrike(pair, client, options, payload, tries) {
   try {
     for (var order of false ? [] : payload.orders) {
-      console.info(get_time_string() + " " + client.name + " is placing a " + pair + " " + order.side.toLowerCase() + " order with price " + (order.price || 0).toFixed(6));
+      console.info(get_time_string() + " " + client.name + " is placing a " + order.qty + " " + pair + " " + order.side.toLowerCase() + " order with price " + (order.price || 0).toFixed(6));
     }
     return await client.privatePostAuthOrderBulk(payload);
   } catch (e) {
@@ -815,6 +824,9 @@ function update_index_wss_everstrike(client, pair, options, data) {
   var spread = Math.max(1, Math.min(10, parseInt(1 * 10 * 0.5 * data.volatility * Math.max(0.25, Math.min(1, (black_scholes/data.underlying_price*50))))));
   indices[client.name][pair].spread = spread * (get_pair_options(pair, options).spread_multiplier || options.SPREAD_MULTIPLIER || 1);
   var supplied_bs = data && data.black_scholes ? data.black_scholes : null;
+  indices[client.name][pair].underlying_price = data.underlying_price;
+  indices[client.name][pair].call = pair.indexOf('CALL') !== -1;
+  indices[client.name][pair].put = pair.indexOf('PUT') !== -1;
   indices[client.name][pair].mark_price = is_option ? supplied_bs || black_scholes || indices[client.name][pair].index_price : indices[client.name][pair].mark_price;
   indices[client.name][pair].adjusted_price = indices[client.name][pair].mark_price;
   var is_price_changed = price_is_changed(client, pair, options);

@@ -28,7 +28,8 @@
             "refresh_factor": 0.00,
             "spread_buffer": 0.01,
             "stale_buffer": 2,
-            "scale_fn_base": 1.1
+            "scale_fn_base": 1.1,
+            "long_bias": 0.00
           }
         }
       }
