@@ -212,6 +212,10 @@ Available endpoints:
 
 The /configure endpoint mutates internal server state. You can use it to change the long bias, volatility bias and spread for a specific pair, while the bot is running. Simply substitute your desired values into the query string above.
 
+You can check the current configuration of the bot by using the following query:
+
+- localhost:8081/configure?pair=USD_BTC_PERP&name=Everstrike_MM
+
 ## Running without Docker
 
 1. Ensure NPM is installed
