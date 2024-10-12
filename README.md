@@ -90,6 +90,26 @@ You can configure the spread in config/config.json:
   "spread_multiplier": 20,
 ```
 
+## Configuring long bias
+
+By default, the bot runs with a neutral long bias.
+
+You can configure the long bias in config/config.json:
+
+```javascript
+  "long_bias": 0.01,
+```
+
+## Configuring volatility bias
+
+By default, the bot runs with a neutral volatility bias.
+
+You can configure the volatility bias in config/config.json:
+
+```javascript
+  "volatility_bias": -0.01,
+```
+
 ## Further customization
 
 Info coming soon.
@@ -109,6 +129,7 @@ Available endpoints:
 - localhost:8081/orders
 - localhost:8081/positions
 - localhost:8081/balances
+- localhost:8081/configure?pair=<PAIR>&name=<CLIENT_ID>&long_bias=<LONG_BIAS>&volatility_bias=<VOLATILITY_BIAS>&spread_multiplier=<SPREAD_MULTIPLIER>
 
 ## Running without Docker
 
