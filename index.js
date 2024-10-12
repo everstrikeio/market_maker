@@ -901,28 +901,60 @@ async function exit(client, pair, options) {
 function create_server(options) {
   http.createServer((req, res) => {
     var url = req.url;
-    if(url ==='/ok') {
+    var ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || null;
+    console.info(get_time_string() + " Served request: " + url + " from " + ip);
+    req.params = params(req);
+    var base_url = url.indexOf('?') !== -1 ? url.split('?')[0] : url;
+    if(base_url ==='/ok') {
       var is_ok = (Date.now() - last_call) < options.NO_ACTIONS_TIMEOUT_MS;
       var status = is_ok ? 200 : 500;
       res.writeHead(status, {'Content-Type': 'text/plain'});
       return is_ok ? res.end('ok') : res.end('not active');
     }
-    else if(url ==='/orders') {
+    else if(base_url ==='/orders') {
       res.writeHead(200, {'Content-Type': 'application/json'});
       return res.end(JSON.stringify(active_orders));
     }
-    else if(url ==='/balances') {
+    else if(base_url ==='/balances') {
       res.writeHead(200, {'Content-Type': 'application/json'});
       return res.end(JSON.stringify(current_balances));
     }
-    else if(url ==='/positions') {
+    else if(base_url ==='/positions') {
       res.writeHead(200, {'Content-Type': 'application/json'});
       return res.end(JSON.stringify(current_positions));
+    }
+    else if(base_url ==='/configure') {
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      var long_bias = req.params ? req.params.long_bias : null;
+      var volatility_bias = req.params ? req.params.volatility_bias : null;
+      var pair = req.params ? req.params.pair : null;
+      var name = req.params ? req.params.name : null;
+      var options = name ? client_options[name] : null;
+      var pair_options = options && pair ? get_pair_options(pair, options) : null;
+      if (pair_options) {
+        if (long_bias || long_bias === 0) pair_options.long_bias = long_bias;
+        if (volatility_bias || volatility_bias === 0) pair_options.volatility_bias = volatility_bias;
+      }
+      return pair_options ? res.end(JSON.stringify({success: true, pair: pair, long_bias: pair_options.long_bias, volatility_bias: pair_options.volatility_bias})) : res.end(JSON.stringify({success: false, reason: "Unknown client or pair"}));
     }
     res.writeHead(404, {'Content-Type': 'text/plain'});
     return res.end('not found');
   }).listen(options.SERVER_PORT);
   console.info(get_time_string() + " Server listening on port " + options.SERVER_PORT);
+}
+
+function params(req){
+  let q = req.url.split('?'),result={};
+  if(q.length >= 2){
+      q[1].split('&').forEach((item)=>{
+           try {
+             result[item.split('=')[0]]=item.split('=')[1];
+           } catch (e) {
+             result[item.split('=')[0]]='';
+           }
+      })
+  }
+  return result;
 }
 
 function is_insufficient_balance(error) {

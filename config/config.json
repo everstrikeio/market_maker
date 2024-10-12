@@ -3,7 +3,7 @@
     {
       "API_KEY": "",
       "SECRET_KEY": "",
-      "CLIENT_ID": "Everstrike MM",
+      "CLIENT_ID": "Everstrike_MM",
       "OPTIONS": {
         "PAIRS": ["USD_BTC_PERP"],
         "NUM_ORDERS": 2,
