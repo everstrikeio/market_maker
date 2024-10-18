@@ -237,7 +237,7 @@ async function submit_orders(client, pair, options, price_changed) {
   bid = should_use_baseline ? baseline_price * (1-mark_spread_ratio) : bid;
   ask = should_use_baseline ? baseline_price * (1+mark_spread_ratio) : ask;
   var price_underlying_ratio = underlying ? baseline_price / underlying : 1;
-  var qty_ratio = price_underlying_ratio < 1 ? price_underlying_ratio * 10 : price_underlying_ratio;
+  var qty_ratio = price_underlying_ratio < 1 ? price_underlying_ratio : price_underlying_ratio;
   var bias_multiplier = 1 / price_underlying_ratio;
   bid = long_bias < 0 && long_bias && bias_multiplier ? bid - (bid * Math.min(1, Math.abs(long_bias || 0) * bias_multiplier)) : bid;
   ask = long_bias > 0 && long_bias && bias_multiplier ? ask + (ask * Math.abs(long_bias || 0) * bias_multiplier) : ask;
@@ -250,8 +250,8 @@ async function submit_orders(client, pair, options, price_changed) {
   var index = 1;
   var base_qty = balance && balance.base && balance.base.free !== undefined ? balance.base.free : 0;
   var quote_qty = balance && balance.quote && balance.quote.free !== undefined ? balance.quote.free : 0;
-  var bid_qty_total = is_perp(pair) ? (quote_qty * get_pair_options(pair, options).base / 10) / mid * qty_ratio : quote_qty * (get_pair_options(pair, options).quote / mid) / 2;
-  var ask_qty_total = is_perp(pair) ? (quote_qty * get_pair_options(pair, options).base / 10) / mid * qty_ratio : base_qty * get_pair_options(pair, options).base / 2;
+  var bid_qty_total = is_perp(pair) ? (quote_qty * get_pair_options(pair, options).base / 2) / (baseline_price || mid) * qty_ratio : quote_qty * (get_pair_options(pair, options).quote / mid) / 2;
+  var ask_qty_total = is_perp(pair) ? (quote_qty * get_pair_options(pair, options).base / 2) / (underlying || baseline_price || mid) * (1 || price_underlying_ratio) : base_qty * get_pair_options(pair, options).base / 2;
   var jobs = [];
   var reused_active_orders = [];
   var new_buy_orders = [];
@@ -367,8 +367,8 @@ async function submit_orders_in_bulk_internal(client, pair, orders, min_qty, min
     var transforme_qty = transform_qty(client, pair, options, scaled_qty, min_qty);
     rounded_qty = get_pair_options(pair, options).max ? Math.min(transforme_qty, get_pair_options(pair, options).max) : transforme_qty;
     order.qty = Math.min(Math.max(0, order.side === 'buy' ? max_total_qty - qty_so_far_buy : max_total_qty - qty_so_far_sell), rounded_qty);
-    qty_so_far_buy  = order.side === 'buy' ? qty_so_far_buy + order.qty : qty_so_far_buy;
-    qty_so_far_sell  = order.side === 'sell' ? qty_so_far_sell + order.qty : qty_so_far_sell;
+    qty_so_far_buy = order.side === 'buy' ? qty_so_far_buy + order.qty : qty_so_far_buy;
+    qty_so_far_sell = order.side === 'sell' ? qty_so_far_sell + order.qty : qty_so_far_sell;
     var should_place = rounded_qty >= min_qty && order.qty >= min_qty;
     var pushed = should_place ? final_orders.push(order) : null;
   }
@@ -396,6 +396,14 @@ async function submit_orders_in_bulk_internal(client, pair, orders, min_qty, min
     var pair_symbol = pair;
     return price && price !== Infinity && !price_already_quoted ? {pair: pair_symbol, qty: e.qty, price: price, side: side.toUpperCase(), ks: should_ks, post_only: should_post_only, leverage: 1, reduce_only: should_reduce_only} : undefined;
   }).filter(e => e);
+  var buy_orders = orders_payload.filter(e => e.side === 'BUY');
+  var sell_orders = orders_payload.filter(e => e.side === 'SELL');
+  for (var order of orders_payload) {
+    order.qty = order.qty / (order.side === 'BUY' ? buy_orders.length || 1 : sell_orders.length || 1);
+    var transforme_qty = transform_qty(client, pair, options, order.qty, min_qty);
+    rounded_qty = get_pair_options(pair, options).max ? Math.min(transforme_qty, get_pair_options(pair, options).max) : transforme_qty;
+    order.qty = rounded_qty;
+  }
   return orders_payload.length > 0 && is_still_good_price(client, pair, options, best_bid, best_ask) && sigtermed === false ? await submit_orders_everstrike(pair, client, options, {recv_window: options.RECV_WINDOW, orders: orders_payload}, 0) : null;
 }
 
