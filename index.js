@@ -237,6 +237,7 @@ async function submit_orders(client, pair, options, price_changed) {
   bid = should_use_baseline ? baseline_price * (1-mark_spread_ratio) : bid;
   ask = should_use_baseline ? baseline_price * (1+mark_spread_ratio) : ask;
   var price_underlying_ratio = underlying ? baseline_price / underlying : 1;
+  var qty_ratio = price_underlying_ratio < 1 ? price_underlying_ratio * 10 : price_underlying_ratio;
   var bias_multiplier = 1 / price_underlying_ratio;
   bid = long_bias < 0 && long_bias && bias_multiplier ? bid - (bid * Math.min(1, Math.abs(long_bias || 0) * bias_multiplier)) : bid;
   ask = long_bias > 0 && long_bias && bias_multiplier ? ask + (ask * Math.abs(long_bias || 0) * bias_multiplier) : ask;
@@ -249,8 +250,8 @@ async function submit_orders(client, pair, options, price_changed) {
   var index = 1;
   var base_qty = balance && balance.base && balance.base.free !== undefined ? balance.base.free : 0;
   var quote_qty = balance && balance.quote && balance.quote.free !== undefined ? balance.quote.free : 0;
-  var bid_qty_total = is_perp(pair) ? (quote_qty * get_pair_options(pair, options).base / 2) / mid : quote_qty * (get_pair_options(pair, options).quote / mid) / 2;
-  var ask_qty_total = is_perp(pair) ? (quote_qty * get_pair_options(pair, options).base / 2) / mid : base_qty * get_pair_options(pair, options).base / 2;
+  var bid_qty_total = is_perp(pair) ? (quote_qty * get_pair_options(pair, options).base / 10) / mid * qty_ratio : quote_qty * (get_pair_options(pair, options).quote / mid) / 2;
+  var ask_qty_total = is_perp(pair) ? (quote_qty * get_pair_options(pair, options).base / 10) / mid * qty_ratio : base_qty * get_pair_options(pair, options).base / 2;
   var jobs = [];
   var reused_active_orders = [];
   var new_buy_orders = [];
@@ -302,8 +303,8 @@ async function submit_orders(client, pair, options, price_changed) {
     first_maker_bid = first_maker_bid || maker_bid;
     first_maker_ask = first_maker_ask || maker_ask;
     var republish_eps = spread / 20;
-    var matching_bids = reused_active_orders.filter(e => e.side === 'buy' && e.price < first_maker_bid && Math.abs(e.price - maker_bid) <= republish_eps && e.side === 'buy');
-    var matching_asks = reused_active_orders.filter(e => e.side === 'sell' && e.price > first_maker_ask && Math.abs(e.price - maker_ask) <= republish_eps && e.side === 'sell');
+    var matching_bids = reused_active_orders.filter(e => e.side === 'buy' && e.price <= first_maker_bid && Math.abs(e.price - maker_bid) <= republish_eps && e.side === 'buy');
+    var matching_asks = reused_active_orders.filter(e => e.side === 'sell' && e.price >= first_maker_ask && Math.abs(e.price - maker_ask) <= republish_eps && e.side === 'sell');
     var no_matching_bid = matching_bids.length === 0;
     var no_matching_ask = matching_asks.length === 0;
     var should_place_bid = no_matching_bid && num_orders_buy < max_orders_buy && maker_bid < bid;
@@ -379,6 +380,7 @@ async function submit_orders_in_bulk_internal(client, pair, orders, min_qty, min
   indices[client.name][pair] = indices[client.name][pair] || {};
   var index_entry = indices[client.name][pair];
   var index = index_entry && index_entry[get_price_to_use(pair)] ? index_entry[get_price_to_use(pair)] : null;
+  var price_selected = {};
   var orders_payload = final_orders.map((e,idx) => {
     var side = e.side;
     var should_post_only = false;
@@ -387,10 +389,12 @@ async function submit_orders_in_bulk_internal(client, pair, orders, min_qty, min
     var index_ask = index - (tick_size);
     var index_best_bidbid = index + (tick_size);
     var price = parseFloat(e.price);
+    var price_already_quoted = price_selected[price] ? true : false;
+    price_selected[price] = true;
     best_bid = side === 'buy' && price > best_bid ? price : best_bid;
     best_ask = side === 'sell' && price < best_ask ? price : best_ask;
     var pair_symbol = pair;
-    return price && price !== Infinity ? {pair: pair_symbol, qty: e.qty, price: price, side: side.toUpperCase(), ks: should_ks, post_only: should_post_only, leverage: 1, reduce_only: should_reduce_only} : undefined;
+    return price && price !== Infinity && !price_already_quoted ? {pair: pair_symbol, qty: e.qty, price: price, side: side.toUpperCase(), ks: should_ks, post_only: should_post_only, leverage: 1, reduce_only: should_reduce_only} : undefined;
   }).filter(e => e);
   return orders_payload.length > 0 && is_still_good_price(client, pair, options, best_bid, best_ask) && sigtermed === false ? await submit_orders_everstrike(pair, client, options, {recv_window: options.RECV_WINDOW, orders: orders_payload}, 0) : null;
 }
@@ -822,10 +826,11 @@ function update_index_wss_everstrike(client, pair, options, data) {
   indices[client.name][pair].mark_price = data && data.mark ? data.mark : indices[client.name][pair].mark_price;
   var atm_pct = Math.abs(data.strike - data.underlying_price) / data.underlying_price;
   var is_option = (pair.indexOf('CALL') !== -1 || pair.indexOf('PUT') !== -1);
+  var is_future = !is_option && (pair.indexOf('PERP') !== -1);
   var black_scholes = is_option ? bs.blackScholes(data.underlying_price, data.strike, 1/365/12, data.volatility, options.RISK_FREE_INTEREST_RATE, pair.indexOf('PUT') !== -1 ? "put" : "call" ) : null;
   black_scholes = Math.max(0.000125 * data.underlying_price, black_scholes);
   var spread = Math.max(1, Math.min(10, parseInt(1 * 10 * 0.5 * data.volatility * Math.max(0.25, Math.min(1, (black_scholes/data.underlying_price*50))))));
-  indices[client.name][pair].spread = spread * (get_pair_options(pair, options).spread_multiplier || options.SPREAD_MULTIPLIER || 1);
+  indices[client.name][pair].spread = spread * (get_pair_options(pair, options)['spread_multiplier_' + (is_option ? 'options' : (is_future ? 'futures' : 'spot'))] || get_pair_options(pair, options).spread_multiplier || options.SPREAD_MULTIPLIER || 1);
   var supplied_bs = data && data.black_scholes ? data.black_scholes : null;
   indices[client.name][pair].underlying_price = data.underlying_price;
   indices[client.name][pair].call = pair.indexOf('CALL') !== -1;
