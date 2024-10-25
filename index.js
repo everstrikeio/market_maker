@@ -76,7 +76,8 @@ var OPTIONS = {
   WSS_POSITION_DONE_FN: position_done_wss_everstrike,
   WSS_SUBSCRIBE_DEPTH_FN: null,
   SUBSCRIBE_PAIR_FN: subscribe_pair_everstrike,
-  WSS_URL_BASE: 'wss://wss.testnet.everstrike.io'
+  API_KEY_URL: process.env.TRADING_ENV === 'mainnet' ? 'https://app.everstrike.io/app/apikey' : 'https://app.testnet.everstrike.io/app/apikey',
+  WSS_URL_BASE: process.env.TRADING_ENV === 'mainnet' ? 'wss://wss.everstrike.io' : 'wss://wss.testnet.everstrike.io'
 };
 const ONE_SECOND = 1000;
 
@@ -877,7 +878,7 @@ function get_everstrike(api_key, secret_key, client_id, additional_options) {
   everstrike.fetch_positions = fetch_positions_everstrike;
   everstrike.fetch_balances = fetch_balances_everstrike;
   everstrike.fetch_ticker_native = fetch_ticker_everstrike;
-  everstrike.urls.api = process.env.API_URL || everstrike.urls.test || everstrike.urls.api;
+  everstrike.urls.api = process.env.API_URL || (process.env.TRADING_ENV === 'mainnet' ? everstrike.urls.api : everstrike.urls.test || everstrike.urls.api);
   everstrike.options = additional_options;
   everstrike.name = client_id;
   everstrike.client_id = everstrike.name;
@@ -985,11 +986,11 @@ function log_closed_ws(client_name, feed_id) {
 }
 
 function handle_missing_api_key(client) {
-  console.info("API key missing for " + client.CLIENT_ID + ". Get an API key at https://app.testnet.everstrike.io/app/apikey");
+  console.info("API key missing for " + client.CLIENT_ID + ". Get an API key at " + OPTIONS.API_KEY_URL);
 }
 
 function handle_missing_secret_key(client) {
-  console.info("Secret key missing for " + client.CLIENT_ID + ". Get a secret key at https://app.testnet.everstrike.io/app/apikey");
+  console.info("Secret key missing for " + client.CLIENT_ID + ". Get a secret key at " + OPTIONS.API_KEY_URL);
 }
 
 function log_ws_error(err) {

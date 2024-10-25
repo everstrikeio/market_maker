@@ -48,11 +48,11 @@ module.exports = class es extends Exchange {
                 '6h': '360min'
             },
             'urls': {
-                'api': 'https://api.everstrike.com',
+                'api': 'https://api.everstrike.io',
                 'test': 'https://api.testnet.everstrike.io',
-                'www': 'https://www.everstrike.com',
+                'www': 'https://www.everstrike.io',
                 'doc': [
-                    'https://docs.testnet.everstrike.com'
+                    'https://docs.testnet.everstrike.io'
                 ],
             },
             'api': {
