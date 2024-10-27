@@ -458,6 +458,7 @@ Here's how it looks, without any configuration:
             "spread_multiplier_spot": 50, // Size of the spread, in pips, for spot
             "order_placement_interval": 10000, // Interval to wait between order placement
             "zero_pos_if_pos_bigger_than": 10000000, // Maximum exposure in USD
+            "max_drawdown": 10000000, // Maximum drawdown in USD
             "buy": true, // If buy orders should be submitted
             "sell": true, // If sell orders should be submitted
             "use_index": true, // If the Index Price should be used as a reference price
