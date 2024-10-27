@@ -912,6 +912,7 @@ function get_pnl(specific_client) {
     var total_rpnl = 0;
     var balances = current_balances[client.name];
     for (var pair of (options.PAIRS || [])) {
+      if (!balances[pair]) continue;
       var position = balances[pair].position;
       var quote = balances[pair].quote;
       var upnl = position && position.stats ? position.stats.pnl : 0;
