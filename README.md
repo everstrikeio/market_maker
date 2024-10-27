@@ -430,6 +430,61 @@ Spot:
 
 Full json: ["BTC_USD","ETH_USD","BNB_USD","SOL_USD","AVAX_USD","ATOM_USD","DOT_USD","LINK_USD","ADA_USD","XRP_USD","ALGO_USD","USDT_USD"]
 
+## Understanding config.json
+
+Config.json (found in the path /config/config.json) is central to making the bot behave the way you like.
+
+Here's how it looks, without any configuration:
+
+```javascript
+{
+  "clients": [
+    {
+      "API_KEY": "", // Your Everstrike (Testnet) API key
+      "SECRET_KEY": "", // Your Everstrike (Testnet) secret key
+      "CLIENT_ID": "Everstrike_MM", // A descriptive name of the bot client. Used for logging purposes.
+      "OPTIONS": { // The main configuration object
+        "PAIRS": ["USD_BTC_PERP"], // Which trading pairs to market make. See above for a list of trading pairs.
+        "NUM_ORDERS": 2, // Number of orders to manage for each trading pair (on each side of the spread)
+        "MIN_ORDERS": 0, // Minimum number of orders for each trading pair
+        "ORDER_PLACEMENT_INTERVAL": 10000, // Interval to wait between order placement
+        "PAIR_OPTIONS": {
+          "BTC/USD": { // Pair-wise configuration object. If no pair-wise configuration object is specified for a specific pair, the BTC/USD configuration object will be used.
+            "base": 0.10, // Percentage of base balance to use (USD for perpetual contracts)
+            "quote": 0.10, // Percentage of quote balance to use (only relevant for market making spot pairs)
+            "spread_multiplier": 50, // Size of the spread, in pips
+            "spread_multiplier_futures": 50, // Size of the spread, in pips, for futures
+            "spread_multiplier_options": 50, // Size of the spread, in pips, for options
+            "spread_multiplier_spot": 50, // Size of the spread, in pips, for spot
+            "order_placement_interval": 10000, // Interval to wait between order placement
+            "zero_pos_if_pos_bigger_than": 10000000, // Maximum exposure in USD
+            "buy": true, // If buy orders should be submitted
+            "sell": true, // If sell orders should be submitted
+            "use_index": true, // If the Index Price should be used as a reference price
+            "use_mark": false, // If the Mark Price should be used as a reference price
+            "is_perp": true, // If the pair is a perpetual contract
+            "floor": 0.05,
+            "mark_index_spread": 0.00000,
+            "submit_even_on_price_changed": true,
+            "price_changed_num_orders": 0,
+            "refresh_factor": 0.00,
+            "spread_buffer": 0.01,
+            "stale_buffer": 2,
+            "scale_fn_base": 1.1, // Scaling function for order quantities
+            "long_bias": 0.00, // Long bias
+            "volatility_bias": 0.00 // Volatility bias
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+Note: You don't necessarily need to specify a configuration for each trading pair that you are market making. Specifying a configuration for BTC/USD (as seen in the example above) will usually be enough. All other trading pairs will automatically default to this configuration object.
+
+You only need to specify a configuration for a trading pair if you want fine-tuned configuration for that specific trading pair.
+
 ## License
 
 MIT License
