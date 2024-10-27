@@ -19,6 +19,7 @@
             "spread_multiplier_spot": 50,
             "order_placement_interval": 10000,
             "zero_pos_if_pos_bigger_than": 10000000,
+            "max_drawdown": 10000000,
             "buy": true,
             "sell": true,
             "use_index": true,

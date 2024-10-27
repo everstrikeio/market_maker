@@ -286,12 +286,18 @@ async function submit_orders(client, pair, options, price_changed) {
   var bid_qty = options.USE_DYNAMIC_QTY && skew < 0 ? bid_qty_total * Math.min(1, (1 / Math.abs(options.INVENTORY_MULTIPLIER_QTY * skew))) : bid_qty_total;
   var ask_qty = options.USE_DYNAMIC_QTY && skew > 0 ? ask_qty_total * Math.min(1, (1 / Math.abs(options.INVENTORY_MULTIPLIER_QTY * skew))) : ask_qty_total;
   var min_price = 0.01;
+  var pnl_entry = get_pnl(client);
+  var pnl = pnl_entry && pnl_entry[0] ? pnl_entry[0].total || 0 : 0;
   bid_qty = position_size && position_size >  (get_pair_options(pair, options).zero_qty_if_pos_bigger_than || options.ZERO_QTY_IF_POS_BIGGER_THAN) ? 0 : bid_qty;
   ask_qty = position_size && position_size < -(get_pair_options(pair, options).zero_qty_if_pos_bigger_than || options.ZERO_QTY_IF_POS_BIGGER_THAN) ? 0 : ask_qty;
   bid_qty = total_pos && total_pos > (get_pair_options(pair, options).zero_pos_if_pos_bigger_than || options.ZERO_POS_IF_POS_BIGGER_THAN) ? 0 : bid_qty;
   ask_qty = total_pos && total_pos < -(get_pair_options(pair, options).zero_pos_if_pos_bigger_than || options.ZERO_POS_IF_POS_BIGGER_THAN) ? 0 : ask_qty;
   ask_qty = bid_qty < bid_qty_total ? ask_qty += bid_qty_total - bid_qty : ask_qty;
   bid_qty = ask_qty < ask_qty_total ? bid_qty += ask_qty_total - ask_qty : bid_qty;
+  bid_qty = pnl && get_pair_options(pair, options).max_drawdown && pnl < -(get_pair_options(pair, options).max_drawdown) ? 0 : bid_qty;
+  ask_qty = pnl && get_pair_options(pair, options).max_drawdown && pnl < -(get_pair_options(pair, options).max_drawdown) ? 0 : ask_qty;
+  bid_qty = get_pair_options(pair, options).buy === false ? 0 : bid_qty;
+  ask_qty = get_pair_options(pair, options).sell === false ? 0 : ask_qty;
   var reused_ids = reused_active_orders.map(e => e.id);
   var first_maker_bid;
   var first_maker_ask;
@@ -869,6 +875,7 @@ async function update_ob_wss_everstrike(client, pair, options, data) {
 async function position_done_wss_everstrike(client, options, data) {
   var pair = data && data.order && data.order.pair ? data.order.pair : null;
   var balance = await get_balances(client, pair, options, false);
+  return;
   try {return await client.privatePostLeverage({pair: data.order.pair, leverage: get_pair_options(pair, options).leverage})} catch (e) { console.error(e); }
 }
 
@@ -895,6 +902,26 @@ function up(multiple, qty) {
 
 function floor(decimals, qty) {
   return Math.floor(qty * Math.pow(10, decimals)) / Math.pow(10, decimals);
+}
+
+function get_pnl(specific_client) {
+  var entries = [];
+  for (var client of (specific_client ? [specific_client] : active_clients)) {
+    var options = client_options[client.name] || {};
+    var total_upnl = 0;
+    var total_rpnl = 0;
+    var balances = current_balances[client.name];
+    for (var pair of (options.PAIRS || [])) {
+      var position = balances[pair].position;
+      var quote = balances[pair].quote;
+      var upnl = position && position.stats ? position.stats.pnl : 0;
+      var rpnl = position ? position.cum_pnl : 0;
+      total_upnl += upnl;
+      total_rpnl += rpnl;
+    }
+    entries.push({name: client.name, upnl: upnl, rpnl: rpnl, total: upnl + rpnl});
+  }
+  return entries;
 }
 
 function track_num_orders_placed() {
@@ -937,21 +964,32 @@ function create_server(options) {
       res.writeHead(200, {'Content-Type': 'application/json'});
       return res.end(JSON.stringify(current_positions));
     }
+    else if(base_url ==='/pnl') {
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      return res.end(JSON.stringify(get_pnl()));
+    }
     else if(base_url ==='/configure') {
       res.writeHead(200, {'Content-Type': 'application/json'});
       var long_bias = req.params ? req.params.long_bias : null;
       var volatility_bias = req.params ? req.params.volatility_bias : null;
       var spread_multiplier = req.params ? req.params.spread_multiplier : null;
+      var buy = req.params ? req.params.buy : null;
+      var sell = req.params ? req.params.sell : null;
       var pair = req.params ? req.params.pair : null;
       var name = req.params ? req.params.name : null;
       var options = name ? client_options[name] : null;
       var pair_options = options && pair ? get_pair_options(pair, options) : null;
+      var should_cancel = (buy && buy !== 'true' && pair_options && pair_options.buy === true) || (sell && sell !== 'true' && pair_options && pair_options.sell === true) ;
       if (pair_options) {
         if (long_bias || long_bias === 0) pair_options.long_bias = long_bias;
         if (volatility_bias || volatility_bias === 0) pair_options.volatility_bias = volatility_bias;
         if (spread_multiplier || spread_multiplier === 0) pair_options.spread_multiplier = spread_multiplier;
+        if (buy) pair_options.buy = buy === 'true' ? true : false;
+        if (sell) pair_options.sell = sell === 'true' ? true : false;
       }
-      return pair_options ? res.end(JSON.stringify({success: true, pair: pair, long_bias: pair_options.long_bias, volatility_bias: pair_options.volatility_bias, spread_multiplier: pair_options.spread_multiplier})) : res.end(JSON.stringify({success: false, reason: "Unknown client or pair"}));
+      var client = active_clients.filter(e => e && e.name === name)[0];
+      if (should_cancel && client && pair && options) cancel_orders(client, pair, options, undefined, undefined, undefined, undefined, undefined, true);
+      return pair_options ? res.end(JSON.stringify({success: true, pair: pair, buy: pair_options.buy, sell: pair_options.sell, long_bias: pair_options.long_bias, volatility_bias: pair_options.volatility_bias, spread_multiplier: pair_options.spread_multiplier})) : res.end(JSON.stringify({success: false, reason: "Unknown client or pair"}));
     }
     res.writeHead(404, {'Content-Type': 'text/plain'});
     return res.end('not found');
