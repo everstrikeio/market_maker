@@ -920,7 +920,7 @@ function get_pnl(specific_client) {
       total_upnl += upnl;
       total_rpnl += rpnl;
     }
-    entries.push({name: client.name, upnl: upnl, rpnl: rpnl, total: upnl + rpnl});
+    entries.push({name: client.name, upnl: total_upnl, rpnl: total_rpnl, total: total_upnl + total_rpnl});
   }
   return entries;
 }
