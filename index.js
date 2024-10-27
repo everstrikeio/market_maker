@@ -912,6 +912,7 @@ function get_pnl(specific_client) {
     var total_rpnl = 0;
     var balances = current_balances[client.name];
     for (var pair of (options.PAIRS || [])) {
+      if (!balances[pair]) continue;
       var position = balances[pair].position;
       var quote = balances[pair].quote;
       var upnl = position && position.stats ? position.stats.pnl : 0;
@@ -988,7 +989,9 @@ function create_server(options) {
         if (sell) pair_options.sell = sell === 'true' ? true : false;
       }
       var client = active_clients.filter(e => e && e.name === name)[0];
-      if (should_cancel && client && pair && options) cancel_orders(client, pair, options, undefined, undefined, undefined, undefined, undefined, true);
+      if (should_cancel && client && pair && options) {
+        for (var pair of (options.PAIRS || [])) cancel_orders(client, pair, options, undefined, undefined, undefined, undefined, undefined, true);
+      }
       return pair_options ? res.end(JSON.stringify({success: true, pair: pair, buy: pair_options.buy, sell: pair_options.sell, long_bias: pair_options.long_bias, volatility_bias: pair_options.volatility_bias, spread_multiplier: pair_options.spread_multiplier})) : res.end(JSON.stringify({success: false, reason: "Unknown client or pair"}));
     }
     res.writeHead(404, {'Content-Type': 'text/plain'});
