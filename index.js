@@ -52,8 +52,9 @@ var OPTIONS = {
   ORDER_BOOK_DEPTH: 20,
   MAX_EVENTS_STORED: 10000,
   INVENTORY_MULTIPLIER_QTY: 0.05,
-  ZERO_QTY_IF_POS_BIGGER_THAN: 10000000000,
-  ZERO_POS_IF_POS_BIGGER_THAN: 10000000000,
+  MAX_POSITION: 10000000000,
+  MAX_EXPOSURE: 10000000000,
+  MAX_DRAWDOWN: 10000000000,
   EPS: 1e-9,
   NUM_ORDERS: 2,
   MIN_ORDERS: 0,
@@ -112,7 +113,7 @@ async function main() {
     var subscribed_private = options.WSS_SUBSCRIBE_PRIVATE ? options.WSS_SUBSCRIBE_PRIVATE_FN(client, options) : null;
     for (var pair of options.PAIRS) {
      market_make(client, pair, options);
-     await snooze(ONE_SECOND);
+     await snooze(ONE_SECOND*3);
     }
     setInterval(() => {
       for (var pair of Object.keys(active_orders[client.name] || {})) console.info(get_time_string() + " Active " +  pair + " orders: " + active_orders[client.name][pair] ? active_orders[client.name][pair].length : 0);
@@ -209,7 +210,6 @@ async function submit_orders(client, pair, options, price_changed) {
   var base = pair.split('_')[is_perp(pair) ? 1 : 0];
   var quote = pair.split('_')[is_perp(pair) ? 0 : 1];
   var balance = current_balances[client.name][pair];
-  var total_pos = 0;
   var min_qty = client.markets[get_pair(client, pair)].limits.amount.min;
   var min_notional = client.markets[get_pair(client, pair)].limits.cost.min;
   var tick_size = client.markets[get_pair(client, pair)].precision.price;
@@ -288,14 +288,15 @@ async function submit_orders(client, pair, options, price_changed) {
   var min_price = 0.01;
   var pnl_entry = get_pnl(client);
   var pnl = pnl_entry && pnl_entry[0] ? pnl_entry[0].total || 0 : 0;
-  bid_qty = position_size && position_size >  (get_pair_options(pair, options).zero_qty_if_pos_bigger_than || options.ZERO_QTY_IF_POS_BIGGER_THAN) ? 0 : bid_qty;
-  ask_qty = position_size && position_size < -(get_pair_options(pair, options).zero_qty_if_pos_bigger_than || options.ZERO_QTY_IF_POS_BIGGER_THAN) ? 0 : ask_qty;
-  bid_qty = total_pos && total_pos > (get_pair_options(pair, options).zero_pos_if_pos_bigger_than || options.ZERO_POS_IF_POS_BIGGER_THAN) ? 0 : bid_qty;
-  ask_qty = total_pos && total_pos < -(get_pair_options(pair, options).zero_pos_if_pos_bigger_than || options.ZERO_POS_IF_POS_BIGGER_THAN) ? 0 : ask_qty;
+  var total_pos = pnl_entry && pnl_entry[0] ? pnl_entry[0].exposure || 0 : 0;
+  bid_qty = position_size && (position_size * mid) >  (get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : bid_qty;
+  ask_qty = position_size && (position_size * mid) < -(get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : ask_qty;
   ask_qty = bid_qty < bid_qty_total ? ask_qty += bid_qty_total - bid_qty : ask_qty;
   bid_qty = ask_qty < ask_qty_total ? bid_qty += ask_qty_total - ask_qty : bid_qty;
-  bid_qty = pnl && get_pair_options(pair, options).max_drawdown && pnl < -(get_pair_options(pair, options).max_drawdown) ? 0 : bid_qty;
-  ask_qty = pnl && get_pair_options(pair, options).max_drawdown && pnl < -(get_pair_options(pair, options).max_drawdown) ? 0 : ask_qty;
+  bid_qty = pnl && get_pair_options(pair, options).max_drawdown && pnl < -(get_pair_options(pair, options).max_drawdown || options.MAX_DRAWDOWN) ? 0 : bid_qty;
+  ask_qty = pnl && get_pair_options(pair, options).max_drawdown && pnl < -(get_pair_options(pair, options).max_drawdown || options.MAX_DRAWDOWN) ? 0 : ask_qty;
+  bid_qty = total_pos && total_pos > (get_pair_options(pair, options).max_exposure || options.MAX_EXPOSURE) ? 0 : bid_qty;
+  ask_qty = total_pos && total_pos > (get_pair_options(pair, options).max_exposure || options.MAX_EXPOSURE) ? 0 : ask_qty;
   bid_qty = get_pair_options(pair, options).buy === false ? 0 : bid_qty;
   ask_qty = get_pair_options(pair, options).sell === false ? 0 : ask_qty;
   var reused_ids = reused_active_orders.map(e => e.id);
@@ -368,7 +369,7 @@ async function submit_orders_in_bulk_internal(client, pair, orders, min_qty, min
   var final_orders = [];
   var qty_so_far_buy = 0;
   var qty_so_far_sell = 0;
-  var max_total_qty = get_pair_options(pair, options).zero_pos_if_pos_bigger_than || 0;
+  var max_total_qty = get_pair_options(pair, options).max_exposure || 0;
   for (var order of orders) {
     var scaled_qty = get_pair_options(pair, options).scale_fn_base ? (1/Math.pow(get_pair_options(pair, options).scale_fn_base, options.NUM_ORDERS - order.num_orders)) * order.qty : order.qty / options.NUM_ORDERS;
     var transforme_qty = transform_qty(client, pair, options, scaled_qty, min_qty);
@@ -832,6 +833,7 @@ async function order_done_wss_everstrike(client, options, data, is_fill) {
   submission_ids[client.name][pair] = submission_ids[client.name][pair] || {};
   if (data && data.order && data.order.id) submission_ids[client.name][pair][data.order.id] = true;
   var balance = await get_balances(client, pair, options, false);
+  if (data && data.order && is_fill && options.SLACK_WEBHOOK_URL) slack(options.SLACK_WEBHOOK_URL, get_time_string() + " " + data.order.pair + " " + data.order.side.toLowerCase() + " order with price " + data.order.price + " is now " + (parseFloat((data.order.qty_orig - (data.order.qty_remaining || 0)) / data.order.qty_orig * 100) || 0).toFixed(2) + "% filled");
 }
 
 function update_index_wss_everstrike(client, pair, options, data) {
@@ -910,6 +912,7 @@ function get_pnl(specific_client) {
     var options = client_options[client.name] || {};
     var total_upnl = 0;
     var total_rpnl = 0;
+    var total_exposure = 0;
     var balances = current_balances[client.name];
     for (var pair of (options.PAIRS || [])) {
       if (!balances[pair]) continue;
@@ -917,10 +920,12 @@ function get_pnl(specific_client) {
       var quote = balances[pair].quote;
       var upnl = position && position.stats ? position.stats.pnl : 0;
       var rpnl = position ? position.cum_pnl : 0;
+      var exposure = position && position.stats ? Math.abs(position.stats.notional_entry || 0) : 0;
       total_upnl += upnl;
       total_rpnl += rpnl;
+      total_exposure += exposure;
     }
-    entries.push({name: client.name, upnl: upnl, rpnl: rpnl, total: upnl + rpnl});
+    entries.push({name: client.name, upnl: total_upnl, rpnl: total_rpnl, total: total_upnl + total_rpnl, exposure: total_exposure});
   }
   return entries;
 }
@@ -1050,6 +1055,11 @@ function get_time_string() {
 function handle_event_listeners_and_uncaught_exceptions() {
   require('events').EventEmitter.defaultMaxListeners = 100;
   process.on('uncaughtException', err => { console.error(err, 'Uncaught Exception thrown'); });
+}
+
+async function slack(webhook_url, text) {
+  const body = {text: text};
+  const done = await fetch(webhook_url, {method: 'POST', body: JSON.stringify(body), headers: {'Content-type': 'application/json'}});
 }
 
 function funding_is_in_progress() {

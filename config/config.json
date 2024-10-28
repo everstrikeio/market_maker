@@ -9,6 +9,7 @@
         "NUM_ORDERS": 2,
         "MIN_ORDERS": 0,
         "ORDER_PLACEMENT_INTERVAL": 10000,
+        "SLACK_WEBHOOK_URL": "",
         "PAIR_OPTIONS": {
           "BTC/USD": {
             "base": 0.10,
@@ -18,7 +19,8 @@
             "spread_multiplier_options": 50,
             "spread_multiplier_spot": 50,
             "order_placement_interval": 10000,
-            "zero_pos_if_pos_bigger_than": 10000000,
+            "max_position": 10000000,
+            "max_exposure": 10000000,
             "max_drawdown": 10000000,
             "buy": true,
             "sell": true,

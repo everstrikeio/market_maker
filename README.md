@@ -178,14 +178,24 @@ You can configure the order placement interval in config/config.json:
   "order_placement_interval": 20000,
 ```
 
+## Maximum position
+
+By default, the bot stops placing new orders for a trading pair if you have an active position for that trading pair and the notional value of the position is greater than $10,000,000.
+
+You can configure the maximum position size in config/config.json:
+
+```javascript
+  "max_position": 100000,
+```
+
 ## Maximum exposure
 
-By default, the bot stops placing new orders if your exposure (combined notional value of all open positions) is greater than $10,000,000.
+By default, the bot stops placing new orders if your total exposure (combined notional value of all open positions) is greater than $10,000,000.
 
 You can configure the maximum exposure in config/config.json:
 
 ```javascript
-  "zero_pos_if_pos_bigger_than": 100000,
+  "max_exposure": 100000,
 ```
 
 ## Pricing source
@@ -430,6 +440,8 @@ Spot:
 
 Full json: ["BTC_USD","ETH_USD","BNB_USD","SOL_USD","AVAX_USD","ATOM_USD","DOT_USD","LINK_USD","ADA_USD","XRP_USD","ALGO_USD","USDT_USD"]
 
+Full json (all pairs): ["USD_BTC_PERP","USD_ETH_PERP","USD_BNB_PERP","USD_SOL_PERP","USD_XRP_PERP","USD_AVAX_PERP","USD_DOGE_PERP","USD_ADA_PERP","USD_LINK_PERP","USD_APT_PERP","USD_BCH_PERP","USD_UNI_PERP","USD_FIL_PERP","USD_OP_PERP","USD_LTC_PERP","USD_ARB_PERP","USD_NEAR_PERP","USD_XLM_PERP","USD_DOT_PERP","USD_ICP_PERP","USD_ETC_PERP","USD_IMX_PERP","USD_HBAR_PERP","USD_CRO_PERP","USD_FTM_PERP","USD_INJ_PERP","USD_AXS_PERP","USD_ALGO_PERP","USD_ATOM_PERP","USD_BTCCALL90_PERP","USD_BTCCALL95_PERP","USD_BTCCALL97_PERP","USD_BTCCALL99_PERP","USD_BTCCALL_PERP","USD_BTCCALL1_PERP","USD_BTCCALL3_PERP","USD_BTCCALL5_PERP","USD_BTCCALL10_PERP","USD_BTCPUT90_PERP","USD_BTCPUT95_PERP","USD_BTCPUT97_PERP","USD_BTCPUT99_PERP","USD_BTCPUT_PERP","USD_BTCPUT1_PERP","USD_BTCPUT3_PERP","USD_BTCPUT5_PERP","USD_BTCPUT10_PERP","USD_ETHCALL90_PERP","USD_ETHCALL95_PERP","USD_ETHCALL97_PERP","USD_ETHCALL99_PERP","USD_ETHCALL_PERP","USD_ETHCALL1_PERP","USD_ETHCALL3_PERP","USD_ETHCALL5_PERP","USD_ETHCALL10_PERP","USD_ETHPUT90_PERP","USD_ETHPUT95_PERP","USD_ETHPUT97_PERP","USD_ETHPUT99_PERP","USD_ETHPUT_PERP","USD_ETHPUT1_PERP","USD_ETHPUT3_PERP","USD_ETHPUT5_PERP","USD_ETHPUT10_PERP","USD_XRPCALL20_PERP","USD_XRPCALL80_PERP","USD_XRPPUT20_PERP","USD_XRPPUT80_PERP","USD_AVAXCALL20_PERP","USD_AVAXCALL80_PERP","USD_AVAXPUT20_PERP","USD_AVAXPUT80_PERP","USD_DOGECALL20_PERP","USD_DOGECALL80_PERP","USD_DOGEPUT20_PERP","USD_DOGEPUT80_PERP","USD_ADACALL20_PERP","USD_ADACALL80_PERP","USD_ADAPUT20_PERP","USD_ADAPUT80_PERP","USD_DOGECALL20_PERP","USD_DOGECALL80_PERP","USD_DOGEPUT20_PERP","USD_DOGEPUT80_PERP","USD_LINKCALL20_PERP","USD_LINKCALL80_PERP","USD_LINKPUT20_PERP","USD_LINKPUT80_PERP","USD_LTCCALL20_PERP","USD_LTCCALL80_PERP","USD_LTCPUT20_PERP","USD_LTCPUT80_PERP","USD_DOTCALL20_PERP","USD_DOTCALL80_PERP","USD_DOTPUT20_PERP","USD_DOTPUT80_PERP","BTC_USD","ETH_USD","BNB_USD","SOL_USD","AVAX_USD","ATOM_USD","DOT_USD","LINK_USD","ADA_USD","XRP_USD","ALGO_USD","USDT_USD"]
+
 ## Understanding config.json
 
 Config.json (found in the path /config/config.json) is central to making the bot behave the way you like.
@@ -457,8 +469,9 @@ Here's how it looks, without any configuration:
             "spread_multiplier_options": 50, // Size of the spread, in pips, for options
             "spread_multiplier_spot": 50, // Size of the spread, in pips, for spot
             "order_placement_interval": 10000, // Interval to wait between order placement
-            "zero_pos_if_pos_bigger_than": 10000000, // Maximum exposure in USD
-            "max_drawdown": 10000000, // Maximum drawdown in USD
+            "max_position": 10000000, // Maximum position size in USD (for a single trading pair)
+            "max_exposure": 10000000, // Maximum total exposure in USD (across all trading pairs)
+            "max_drawdown": 10000000, // Maximum drawdown in USD (across all trading pairs)
             "buy": true, // If buy orders should be submitted
             "sell": true, // If sell orders should be submitted
             "use_index": true, // If the Index Price should be used as a reference price
@@ -485,6 +498,30 @@ Here's how it looks, without any configuration:
 Note: You don't necessarily need to specify a configuration for each trading pair that you are market making. Specifying a configuration for BTC/USD (as seen in the example above) will usually be enough. All other trading pairs will automatically default to this configuration object.
 
 You only need to specify a configuration for a trading pair if you want fine-tuned configuration for that specific trading pair.
+
+## Rate limits
+
+The bot has built-in rate-limiting. The default rate limit used by the bot is 50 orders per 30 seconds, and 500 orders per 3 minutes. You can modify this by adding the following to the OPTIONS object of config.json:
+
+```javascript
+"ORDER_PLACEMENT_INTERVAL": 10000, // interval between order placements
+"THIRTY_SECOND_ORDER_LIMIT": 50, // maximum orders per thirty seconds
+"THREE_MINUTE_ORDER_LIMIT": 500, // maximum orders per three minutes
+"RECV_WINDOW": 5000, // reject order requests that exceed this latency
+```
+
+Note: The bot may run into rate limits if you try to market make more than 50 pairs at once. If you intend to market make more than 50 pairs, you should run multiple bot instances, and split the pairs between them.
+
+## Errors
+
+- "503 Service Unavailable" - This is a generic rate-limiting error. May happen if you try to market make more trading pairs than the rate limits of the Everstrike REST API support.
+- "DDOSProtection: Everstrike POST https://api.testnet.everstrike.io/auth/cancel/bulk 429 Too Many Requests {"code":429,"msg":"You have done that too much recently. Care to try again in 0.043 seconds?","result":null}" - Same as above.
+- "408 Request Timeout {"code":414,"msg":"The timestamp is too old.","result":null}" - This indicates that a request timed out. It may be due to a slow or unstable network connection, or a throttled CPU.
+- "ExchangeNotAvailable: Everstrike POST https://api.testnet.everstrike.io/auth/order/bulk  fetch failed" - Same as above.
+
+## Slack notifications
+
+You can configure the bot to send Slack notifications on order fills. To do so, fill out the SLACK_WEBHOOK_URL property in config/config.json.
 
 ## License
 
