@@ -925,7 +925,11 @@ function get_pnl(specific_client) {
       total_rpnl += rpnl;
       total_exposure += exposure;
     }
+<<<<<<< HEAD
     entries.push({name: client.name, upnl: total_upnl, rpnl: total_rpnl, total: total_upnl + total_rpnl, exposure: total_exposure});
+=======
+    entries.push({name: client.name, upnl: total_upnl, rpnl: total_rpnl, total: total_upnl + total_rpnl});
+>>>>>>> c393990e84eea8970c72f5cafbb3e0ccda8ae7b0
   }
   return entries;
 }
