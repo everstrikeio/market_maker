@@ -116,7 +116,7 @@ async function main() {
      await snooze(ONE_SECOND*3);
     }
     setInterval(() => {
-      for (var pair of Object.keys(active_orders[client.name] || {})) console.info(get_time_string() + " Active " +  pair + " orders: " + active_orders[client.name][pair] ? active_orders[client.name][pair].length : 0);
+      for (var pair of Object.keys(active_orders[client.name] || {})) console.info(get_time_string() + " Active " +  pair + " orders: " + (active_orders[client.name][pair] ? active_orders[client.name][pair].length : 0));
       cancel_stale_orders(client, options);
     }, 60*ONE_SECOND);
   }
@@ -428,7 +428,7 @@ function is_still_good_price(client, pair, options, best_bid, best_ask) {
 async function submit_orders_everstrike(pair, client, options, payload, tries) {
   try {
     for (var order of false ? [] : payload.orders) {
-      console.info(get_time_string() + " " + client.name + " is placing a " + order.qty + " " + pair + " " + order.side.toLowerCase() + " order with price " + (order.price || 0).toFixed(6));
+      console.info(get_time_string() + " " + client.name + " is placing a " + order.qty + " " + pair + " " + order.side.toLowerCase() + " order with price " + (order.price || 0).toFixed(6) + " Quota: " + orders_submitted_prev_20s + "/" + options.THIRTY_SECOND_ORDER_LIMIT + " " + orders_submitted_prev_200s + "/" + options.THREE_MINUTE_ORDER_LIMIT);
     }
     return await client.privatePostAuthOrderBulk(payload);
   } catch (e) {
