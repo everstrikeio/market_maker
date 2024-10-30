@@ -28,6 +28,7 @@ var orders_submitted_prev_200s = 0;
 
 var OPTIONS = {
   PAIRS: [],
+  MAX_RETRIES: 3,
   ORDER_PLACEMENT_INTERVAL: 60000,
   ORDER_PLACEMENT_INTERVAL_MINIMUM: 0,
   ORDER_PLACEMENT_INTERVAL_GRANULARITY: 100,
@@ -101,24 +102,93 @@ async function main() {
   for (var client of active_clients) {
     var options = client_options[client.name];
     for (var pair of options.PAIRS) {
-      options.SUBSCRIBE_PAIR_FN(client, pair, options);
+      var subscribed_pair = await subscribe_pair(client, pair, options);
     }
   }
   var jobs = [];
   for (var client of active_clients) {
     var options = client_options[client.name];
-    var cancelled = await client.cancelOrders(undefined, undefined);
-    var markets_loaded = await client.load_markets();
+    var cancelled = await cancel_all_orders(client, options);
+    var markets_loaded = await load_markets(client, options);
     await snooze(ONE_SECOND);
-    var subscribed_private = options.WSS_SUBSCRIBE_PRIVATE ? options.WSS_SUBSCRIBE_PRIVATE_FN(client, options) : null;
+    var subscribed_private =  await subscribe_private(client, options);
     for (var pair of options.PAIRS) {
      market_make(client, pair, options);
      await snooze(ONE_SECOND*3);
     }
     setInterval(() => {
-      for (var pair of Object.keys(active_orders[client.name] || {})) console.info(get_time_string() + " Active " +  pair + " orders: " + (active_orders[client.name][pair] ? active_orders[client.name][pair].length : 0));
+      var total_orders = 0;
+      for (var pair of Object.keys(active_orders[client.name] || {})) {
+        total_orders += (active_orders[client.name][pair] ? active_orders[client.name][pair].length : 0);
+        console.info(get_time_string() + " Active " +  pair + " orders: " + (active_orders[client.name][pair] ? active_orders[client.name][pair].length : 0));
+      }
+      console.info(get_time_string() + " Total active orders: " + (total_orders || 0));
       cancel_stale_orders(client, options);
     }, 60*ONE_SECOND);
+  }
+}
+
+async function cancel_all_orders(client, options, tries) {
+  tries = tries || 0;
+  var tries_exhausted = tries > options.MAX_RETRIES;
+  try {
+    var cancelled = await client.cancelOrders(undefined, undefined);
+    return cancelled;
+  } catch (e) {
+    console.error(e);
+    await snooze(ONE_SECOND);
+    return tries_exhausted ? null : await cancel_all_orders(client, options, tries + 1);
+  }
+}
+
+async function load_markets(client, options, tries) {
+  tries = tries || 0;
+  var tries_exhausted = tries > options.MAX_RETRIES;
+  try {
+    var markets_loaded = await client.load_markets();
+  }
+  catch (e) {
+    console.error(e);
+    await snooze(ONE_SECOND);
+    return tries_exhausted ? null : await load_markets(client, options, tries + 1);
+  }
+}
+
+async function subscribe_private(client, options, tries) {
+  tries = tries || 0;
+  var tries_exhausted = tries > options.MAX_RETRIES;
+  try {
+    var subscribed_private = options.WSS_SUBSCRIBE_PRIVATE ? options.WSS_SUBSCRIBE_PRIVATE_FN(client, options) : null;
+  }
+  catch (e) {
+    console.error(e);
+    await snooze(ONE_SECOND);
+    return tries_exhausted ? null : await subscribe_private(client, options, tries + 1);
+  }
+}
+
+async function subscribe_pair(client, pair, options, tries) {
+  tries = tries || 0;
+  var tries_exhausted = tries > options.MAX_RETRIES;
+  try {
+    var subscribed_pair = options.SUBSCRIBE_PAIR_FN ? options.SUBSCRIBE_PAIR_FN(client, pair, options) : null;
+  }
+  catch (e) {
+    console.error(e);
+    await snooze(ONE_SECOND);
+    return tries_exhausted ? null : await subscribe_pair(client, pair, options, tries + 1);
+  }
+}
+
+async function fetch_open_orders(client, pair, options, params, tries) {
+  tries = tries || 0;
+  var tries_exhausted = tries > options.MAX_RETRIES;
+  try {
+    return await client.fetch_open_orders(pair ? get_pair(client, pair) : undefined, undefined, options.ORDERS_RETURN_LIMIT, params);
+  } catch (e) {
+    console.error(e);
+    await snooze(ONE_SECOND);
+    return tries_exhausted ? [] : await fetch_open_orders(client, pair, options, params, tries + 1);
   }
 }
 
@@ -207,6 +277,7 @@ async function submit_orders(client, pair, options, price_changed) {
   last_call = Date.now();
   if (sigtermed) return;
   if (funding_is_in_progress()) return;
+  console.info(get_time_string() + " " + client.name + " " + "is examining " + pair + ", which has " + (active_orders[client.name][pair] ? active_orders[client.name][pair].length : 0) + " active orders");
   var base = pair.split('_')[is_perp(pair) ? 1 : 0];
   var quote = pair.split('_')[is_perp(pair) ? 0 : 1];
   var balance = current_balances[client.name][pair];
@@ -438,11 +509,11 @@ async function submit_orders_everstrike(pair, client, options, payload, tries) {
 }
 
 async function get_open_orders(client, pair, options, open_orders) {
-  var fetched_orders = open_orders ? null : await client.fetch_open_orders(pair ? get_pair(client, pair) : undefined, undefined, options.ORDERS_RETURN_LIMIT);
+  var fetched_orders = open_orders ? null : await fetch_open_orders(client, pair, options);
   open_orders = open_orders ? open_orders : fetched_orders;
   var has_more = fetched_orders && fetched_orders.length >= options.ORDERS_RETURN_LIMIT;
   while (has_more === true) {
-    fetched_orders = await client.fetch_open_orders(pair ? get_pair(client,pair) : undefined, undefined, options.ORDERS_RETURN_LIMIT, {end: fetched_orders[0].info.time});
+    fetched_orders = await fetch_open_orders(client, pair, options, {end: fetched_orders[0].info.time});
     has_more = fetched_orders && fetched_orders.length >= options.ORDERS_RETURN_LIMIT;
     open_orders = open_orders.concat(fetched_orders);
   }
@@ -472,7 +543,7 @@ async function cancel_orders(client, pair, options, include, exclude, open_order
   var bulk = [];
   for (var order of open_orders) {
     var should_cancel_specific = should_cancel_order(order, include, exclude);
-    if (should_cancel_specific) console.info(get_time_string() + ""  + client.name + " is cancelling a " + order.pair + " order with price " + order.price);
+    if (should_cancel_specific) console.info(get_time_string() + " "  + client.name + " is cancelling a " + order.pair + " order with price " + order.price);
     var pushed_bulk = should_cancel_specific ? bulk.push(order.id) : null;
   }
   var done_bulk = bulk.length > 0 ? cancel_orders_bulk(client, pair, options, bulk) : null;
@@ -521,12 +592,12 @@ async function get_balances(client, pair, options) {
   var balances = await Promise.all(balance_jobs);
   var positions = await Promise.all(position_jobs);
   for (var balance of balances) {
-    if (!balance[base]) continue;
+    if (!balance || !balance[base]) continue;
     balance_base.free += parseFloat(balance[base].free);
     balance_base.used += parseFloat((balance[base].locked + (balance[base].margin || 0)));
   }
   for (var balance of balances) {
-    if (!balance[quote]) continue;
+    if (!balance || !balance[quote]) continue;
     balance_quote.free += parseFloat(balance[quote].free);
     balance_quote.used += parseFloat((balance[quote].locked + (balance[quote].margin || 0)));
   }
@@ -546,28 +617,36 @@ async function get_balances(client, pair, options) {
 }
 
 async function fetch_position_everstrike(client, pair) {
-  var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
-  var positions_json = await positions.json();
-  return positions_json && positions_json.result && positions_json.result.positions && positions_json.result.positions[pair] ? positions_json.result.positions[pair] : undefined;
+  try {
+    var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
+    var positions_json = await positions.json();
+    return positions_json && positions_json.result && positions_json.result.positions && positions_json.result.positions[pair] ? positions_json.result.positions[pair] : undefined;
+  } catch (e) {console.error(e); return undefined; }
 }
 
 async function fetch_positions_everstrike(client) {
-  var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
-  var positions_json = await positions.json();
-  return positions_json && positions_json.result ? positions_json.result.positions : undefined;
+  try {
+    var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
+    var positions_json = await positions.json();
+    return positions_json && positions_json.result ? positions_json.result.positions : undefined;
+  } catch (e) {console.error(e); return undefined; }
 }
 
 async function fetch_balances_everstrike(client) {
-  var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
-  var positions_json = await positions.json();
-  return positions_json && positions_json.result ? positions_json.result.balances : undefined;
+  try {
+    var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
+    var positions_json = await positions.json();
+    return positions_json && positions_json.result ? positions_json.result.balances : undefined;
+  } catch (e) {console.error(e); return undefined; }
 }
 
 async function fetch_ticker_everstrike(client, pair) {
-  var ticker = await fetch(client.urls.api+'/ticker');
-  var ticker_json = await ticker.json();
-  var in_programmatic = get_pair(client, pair);
-  return ticker_json[in_programmatic];
+  try {
+    var ticker = await fetch(client.urls.api+'/ticker');
+    var ticker_json = await ticker.json();
+    var in_programmatic = get_pair(client, pair);
+    return ticker_json[in_programmatic];
+  } catch (e) {console.error(e); return undefined; }
 }
 
 function get_pair(client, pair) {
