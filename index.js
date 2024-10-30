@@ -289,8 +289,8 @@ async function submit_orders(client, pair, options, price_changed) {
   var pnl_entry = get_pnl(client);
   var pnl = pnl_entry && pnl_entry[0] ? pnl_entry[0].total || 0 : 0;
   var total_pos = pnl_entry && pnl_entry[0] ? pnl_entry[0].exposure || 0 : 0;
-  bid_qty = position_size && (position_size * mid) >  (get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : bid_qty;
-  ask_qty = position_size && (position_size * mid) < -(get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : ask_qty;
+  bid_qty = position_size && (position_size * (underlying || baseline_price || mid)) >  (get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : bid_qty;
+  ask_qty = position_size && (position_size * (underlying || baseline_price || mid)) < -(get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : ask_qty;
   ask_qty = bid_qty < bid_qty_total ? ask_qty += bid_qty_total - bid_qty : ask_qty;
   bid_qty = ask_qty < ask_qty_total ? bid_qty += ask_qty_total - ask_qty : bid_qty;
   bid_qty = pnl && get_pair_options(pair, options).max_drawdown && pnl < -(get_pair_options(pair, options).max_drawdown || options.MAX_DRAWDOWN) ? 0 : bid_qty;
@@ -925,11 +925,7 @@ function get_pnl(specific_client) {
       total_rpnl += rpnl;
       total_exposure += exposure;
     }
-<<<<<<< HEAD
     entries.push({name: client.name, upnl: total_upnl, rpnl: total_rpnl, total: total_upnl + total_rpnl, exposure: total_exposure});
-=======
-    entries.push({name: client.name, upnl: total_upnl, rpnl: total_rpnl, total: total_upnl + total_rpnl});
->>>>>>> c393990e84eea8970c72f5cafbb3e0ccda8ae7b0
   }
   return entries;
 }
