@@ -30,10 +30,11 @@ var OPTIONS = {
   PAIRS: [],
   MAX_RETRIES: 3,
   ORDER_PLACEMENT_INTERVAL: 60000,
-  ORDER_PLACEMENT_INTERVAL_MINIMUM: 0,
+  ORDER_PLACEMENT_INTERVAL_MINIMUM: 100,
   ORDER_PLACEMENT_INTERVAL_GRANULARITY: 100,
   WAIT_BEFORE_CANCEL: 0,
   SPREAD_MULTIPLIER: 50,
+  LEVERAGE: 1,
   THIRTY_SECOND_ORDER_LIMIT: 50,
   THREE_MINUTE_ORDER_LIMIT: 500,
   RECV_WINDOW: 5000,
@@ -473,7 +474,7 @@ async function submit_orders_in_bulk_internal(client, pair, orders, min_qty, min
     best_bid = side === 'buy' && price > best_bid ? price : best_bid;
     best_ask = side === 'sell' && price < best_ask ? price : best_ask;
     var pair_symbol = pair;
-    return price && price !== Infinity && !price_already_quoted ? {pair: pair_symbol, qty: e.qty, price: price, side: side.toUpperCase(), ks: should_ks, post_only: should_post_only, leverage: 1, reduce_only: should_reduce_only} : undefined;
+    return price && price !== Infinity && !price_already_quoted ? {pair: pair_symbol, qty: e.qty, price: price, side: side.toUpperCase(), ks: should_ks, post_only: should_post_only, leverage: get_pair_options(pair, options).leverage || options.LEVERAGE || 1, reduce_only: should_reduce_only} : undefined;
   }).filter(e => e);
   var buy_orders = orders_payload.filter(e => e.side === 'BUY');
   var sell_orders = orders_payload.filter(e => e.side === 'SELL');
