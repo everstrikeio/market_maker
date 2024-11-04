@@ -12,6 +12,7 @@ const active_orders = {};
 const ohlcvs = {};
 const current_balances = {};
 const current_positions = {};
+const vault_rates = {};
 const submission_ids = {};
 const indices = {};
 const wss_orders = {};
@@ -117,6 +118,11 @@ async function main() {
      market_make(client, pair, options);
      await snooze(ONE_SECOND*3);
     }
+    var has_vault = client && client.fetch_vault && options.VAULT;
+    var fetched_vault = has_vault ? await client.fetch_vault(client, options.VAULT) : null;
+    var vault_fetcher = has_vault ? setInterval(async() => {
+      await client.fetch_vault(client, options.VAULT);
+    }, options.VAULT_FETCH_INTERVAL || (ONE_SECOND*60)) : null;
     setInterval(() => {
       var total_orders = 0;
       for (var pair of Object.keys(active_orders[client.name] || {})) {
@@ -125,7 +131,7 @@ async function main() {
       }
       console.info(get_time_string() + " Total active orders: " + (total_orders || 0));
       cancel_stale_orders(client, options);
-    }, 60*ONE_SECOND);
+    }, ONE_SECOND*60);
   }
 }
 
@@ -650,6 +656,22 @@ async function fetch_ticker_everstrike(client, pair) {
   } catch (e) {console.error(e); return undefined; }
 }
 
+async function fetch_vault_everstrike(client, pair) {
+  try {
+    var vault = await fetch(client.urls.api+'/vault');
+    var vault_json = await vault.json();
+    var total = vault_json && vault_json.result && vault_json.result.earnings ? vault_json.result.earnings.total : undefined;
+    var supply = vault_json && vault_json.result && vault_json.result.usd_supply ? vault_json.result.usd_supply : undefined;
+    var rate = total && supply ? 1 + total / supply : undefined;
+    indices[client.name] = indices[client.name] || {};
+    indices[client.name][pair] = indices[client.name][pair] || {};
+    indices[client.name][pair].mark_price = rate || indices[client.name][pair].mark_price;
+    indices[client.name][pair].index_price = indices[client.name][pair].mark_price
+    indices[client.name][pair].adjusted_price = indices[client.name][pair].mark_price;
+    console.info(get_time_string() + " " + client.name + " " + pair + " rate: " + indices[client.name][pair].mark_price);
+  } catch (e) {console.error(e); return undefined; }
+}
+
 function get_pair(client, pair) {
   return pair;
 }
@@ -887,7 +909,7 @@ async function order_added_wss_everstrike(client, options, data) {
   var pair = data && data.order ? data.order.pair: null;
   var transformed = data && data.order && data.order.pair ? data.order.pair : null;
   if (!pair) return;
-    wss_orders[client.name] = wss_orders[client.name] || {};
+  wss_orders[client.name] = wss_orders[client.name] || {};
   wss_orders[client.name][pair] = wss_orders[client.name][pair] || [];
   active_orders[client.name] = active_orders[client.name] || {};
   var already_done = data && data.order && data.order.id && submission_ids[client.name] && submission_ids[client.name][pair] && submission_ids[client.name][pair][data.order.id];
@@ -967,6 +989,7 @@ function get_everstrike(api_key, secret_key, client_id, additional_options) {
   everstrike.fetch_positions = fetch_positions_everstrike;
   everstrike.fetch_balances = fetch_balances_everstrike;
   everstrike.fetch_ticker_native = fetch_ticker_everstrike;
+  everstrike.fetch_vault = fetch_vault_everstrike;
   everstrike.urls.api = process.env.API_URL || (process.env.TRADING_ENV === 'mainnet' ? everstrike.urls.api : everstrike.urls.test || everstrike.urls.api);
   everstrike.options = additional_options;
   everstrike.name = client_id;
