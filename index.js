@@ -367,10 +367,14 @@ async function submit_orders(client, pair, options, price_changed) {
   var pnl_entry = get_pnl(client);
   var pnl = pnl_entry && pnl_entry[0] ? pnl_entry[0].total || 0 : 0;
   var total_pos = pnl_entry && pnl_entry[0] ? pnl_entry[0].exposure || 0 : 0;
-  bid_qty = position_size && (position_size * (underlying || baseline_price || mid)) >  (get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : bid_qty;
-  ask_qty = position_size && (position_size * (underlying || baseline_price || mid)) < -(get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : ask_qty;
-  ask_qty = bid_qty < bid_qty_total ? ask_qty += bid_qty_total - bid_qty : ask_qty;
-  bid_qty = ask_qty < ask_qty_total ? bid_qty += ask_qty_total - ask_qty : bid_qty;
+  var reference_price = (underlying || baseline_price || mid);
+  var position_notional = position_size * reference_price;
+  bid_qty = Math.min(bid_qty, (get_pair_options(pair, options).max_position || options.MAX_POSITION) / reference_price);
+  ask_qty = Math.min(ask_qty, (get_pair_options(pair, options).max_position || options.MAX_POSITION) / reference_price);
+  bid_qty = position_size > 0 && reference_price ? Math.min(bid_qty, Math.max(0, ((get_pair_options(pair, options).max_position || options.MAX_POSITION) / reference_price) - position_size)) : bid_qty;
+  ask_qty = position_size < 0 && reference_price ? Math.min(ask_qty, Math.max(0, ((get_pair_options(pair, options).max_position || options.MAX_POSITION) / reference_price) - Math.abs(position_size))) : ask_qty;
+  bid_qty = position_notional && position_notional > (get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : bid_qty;
+  ask_qty = position_notional && position_notional < -(get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : ask_qty;
   bid_qty = pnl && get_pair_options(pair, options).max_drawdown && pnl < -(get_pair_options(pair, options).max_drawdown || options.MAX_DRAWDOWN) ? 0 : bid_qty;
   ask_qty = pnl && get_pair_options(pair, options).max_drawdown && pnl < -(get_pair_options(pair, options).max_drawdown || options.MAX_DRAWDOWN) ? 0 : ask_qty;
   bid_qty = total_pos && total_pos > (get_pair_options(pair, options).max_exposure || options.MAX_EXPOSURE) ? 0 : bid_qty;
@@ -458,7 +462,6 @@ async function submit_orders_in_bulk_internal(client, pair, orders, min_qty, min
     var should_place = rounded_qty >= min_qty && order.qty >= min_qty;
     var pushed = should_place ? final_orders.push(order) : null;
   }
-  var position_size = balance && balance.position ? balance.position.size : undefined;
   var tick_size = get_pair_options(pair, options).floor;
   var best_bid = 0;
   var best_ask = Infinity;
