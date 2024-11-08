@@ -707,7 +707,7 @@ function subscribe_private_everstrike(client, options) {
     switch (category) {
       case 'order_added': return options.WSS_ORDER_ADDED_FN(client, options, message.result);
       case 'order_cancelled': return options.WSS_ORDER_DONE_FN(client, options, message.result);
-      case 'order_partially_completed': return options.WSS_POSITION_DONE_FN(client, options, message.result);
+      case 'order_partially_completed': return options.WSS_ORDER_DONE_FN(client, options, message.result, true);
       case 'order_completed': return options.WSS_ORDER_DONE_FN(client, options, message.result, true);
       default: return null;
     }
