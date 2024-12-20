@@ -1173,7 +1173,7 @@ function funding_is_in_progress() {
   var date = new Date;
   var seconds = date.getSeconds();
   var minutes = date.getMinutes();
-  return (minutes === 59 && seconds >= 30) || (minutes === 0 && seconds <= 30);
+  return (minutes === 59 && seconds >= 30) || (minutes === 0 && seconds <= 60);
 }
 
 function get_pair_options(pair, options) {
