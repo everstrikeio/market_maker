@@ -234,6 +234,7 @@ function get_empty_book() {
 }
 
 function cancel_existing_orders(client, pair, options, price_changed) {
+  if (funding_is_in_progress()) return;
   var should_use_baseline = true;
   var book = get_empty_book();
   var bid = book.bid;
