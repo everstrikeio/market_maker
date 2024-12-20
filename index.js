@@ -12,6 +12,7 @@ const active_orders = {};
 const ohlcvs = {};
 const current_balances = {};
 const current_positions = {};
+const vault_rates = {};
 const submission_ids = {};
 const indices = {};
 const wss_orders = {};
@@ -28,11 +29,13 @@ var orders_submitted_prev_200s = 0;
 
 var OPTIONS = {
   PAIRS: [],
+  MAX_RETRIES: 3,
   ORDER_PLACEMENT_INTERVAL: 60000,
-  ORDER_PLACEMENT_INTERVAL_MINIMUM: 0,
+  ORDER_PLACEMENT_INTERVAL_MINIMUM: 100,
   ORDER_PLACEMENT_INTERVAL_GRANULARITY: 100,
   WAIT_BEFORE_CANCEL: 0,
   SPREAD_MULTIPLIER: 50,
+  LEVERAGE: 1,
   THIRTY_SECOND_ORDER_LIMIT: 50,
   THREE_MINUTE_ORDER_LIMIT: 500,
   RECV_WINDOW: 5000,
@@ -101,24 +104,98 @@ async function main() {
   for (var client of active_clients) {
     var options = client_options[client.name];
     for (var pair of options.PAIRS) {
-      options.SUBSCRIBE_PAIR_FN(client, pair, options);
+      var subscribed_pair = await subscribe_pair(client, pair, options);
     }
   }
   var jobs = [];
   for (var client of active_clients) {
     var options = client_options[client.name];
-    var cancelled = await client.cancelOrders(undefined, undefined);
-    var markets_loaded = await client.load_markets();
+    var cancelled = await cancel_all_orders(client, options);
+    var markets_loaded = await load_markets(client, options);
     await snooze(ONE_SECOND);
-    var subscribed_private = options.WSS_SUBSCRIBE_PRIVATE ? options.WSS_SUBSCRIBE_PRIVATE_FN(client, options) : null;
+    var subscribed_private =  await subscribe_private(client, options);
     for (var pair of options.PAIRS) {
      market_make(client, pair, options);
      await snooze(ONE_SECOND*3);
     }
+    var has_vault = client && client.fetch_vault && options.VAULT;
+    var fetched_vault = has_vault ? await client.fetch_vault(client, options.VAULT) : null;
+    var vault_fetcher = has_vault ? setInterval(async() => {
+      await client.fetch_vault(client, options.VAULT);
+    }, options.VAULT_FETCH_INTERVAL || (ONE_SECOND*60)) : null;
     setInterval(() => {
-      for (var pair of Object.keys(active_orders[client.name] || {})) console.info(get_time_string() + " Active " +  pair + " orders: " + active_orders[client.name][pair] ? active_orders[client.name][pair].length : 0);
+      var total_orders = 0;
+      for (var pair of Object.keys(active_orders[client.name] || {})) {
+        total_orders += (active_orders[client.name][pair] ? active_orders[client.name][pair].length : 0);
+        console.info(get_time_string() + " Active " +  pair + " orders: " + (active_orders[client.name][pair] ? active_orders[client.name][pair].length : 0));
+      }
+      console.info(get_time_string() + " Total active orders: " + (total_orders || 0));
       cancel_stale_orders(client, options);
-    }, 60*ONE_SECOND);
+    }, ONE_SECOND*60);
+  }
+}
+
+async function cancel_all_orders(client, options, tries) {
+  tries = tries || 0;
+  var tries_exhausted = tries > options.MAX_RETRIES;
+  try {
+    var cancelled = await client.cancelOrders(undefined, undefined);
+    return cancelled;
+  } catch (e) {
+    console.error(e);
+    await snooze(ONE_SECOND);
+    return tries_exhausted ? null : await cancel_all_orders(client, options, tries + 1);
+  }
+}
+
+async function load_markets(client, options, tries) {
+  tries = tries || 0;
+  var tries_exhausted = tries > options.MAX_RETRIES;
+  try {
+    var markets_loaded = await client.load_markets();
+  }
+  catch (e) {
+    console.error(e);
+    await snooze(ONE_SECOND);
+    return tries_exhausted ? null : await load_markets(client, options, tries + 1);
+  }
+}
+
+async function subscribe_private(client, options, tries) {
+  tries = tries || 0;
+  var tries_exhausted = tries > options.MAX_RETRIES;
+  try {
+    var subscribed_private = options.WSS_SUBSCRIBE_PRIVATE ? options.WSS_SUBSCRIBE_PRIVATE_FN(client, options) : null;
+  }
+  catch (e) {
+    console.error(e);
+    await snooze(ONE_SECOND);
+    return tries_exhausted ? null : await subscribe_private(client, options, tries + 1);
+  }
+}
+
+async function subscribe_pair(client, pair, options, tries) {
+  tries = tries || 0;
+  var tries_exhausted = tries > options.MAX_RETRIES;
+  try {
+    var subscribed_pair = options.SUBSCRIBE_PAIR_FN ? options.SUBSCRIBE_PAIR_FN(client, pair, options) : null;
+  }
+  catch (e) {
+    console.error(e);
+    await snooze(ONE_SECOND);
+    return tries_exhausted ? null : await subscribe_pair(client, pair, options, tries + 1);
+  }
+}
+
+async function fetch_open_orders(client, pair, options, params, tries) {
+  tries = tries || 0;
+  var tries_exhausted = tries > options.MAX_RETRIES;
+  try {
+    return await client.fetch_open_orders(pair ? get_pair(client, pair) : undefined, undefined, options.ORDERS_RETURN_LIMIT, params);
+  } catch (e) {
+    console.error(e);
+    await snooze(ONE_SECOND);
+    return tries_exhausted ? [] : await fetch_open_orders(client, pair, options, params, tries + 1);
   }
 }
 
@@ -207,6 +284,7 @@ async function submit_orders(client, pair, options, price_changed) {
   last_call = Date.now();
   if (sigtermed) return;
   if (funding_is_in_progress()) return;
+  console.info(get_time_string() + " " + client.name + " " + "is examining " + pair + ", which has " + (active_orders[client.name][pair] ? active_orders[client.name][pair].length : 0) + " active orders");
   var base = pair.split('_')[is_perp(pair) ? 1 : 0];
   var quote = pair.split('_')[is_perp(pair) ? 0 : 1];
   var balance = current_balances[client.name][pair];
@@ -289,10 +367,14 @@ async function submit_orders(client, pair, options, price_changed) {
   var pnl_entry = get_pnl(client);
   var pnl = pnl_entry && pnl_entry[0] ? pnl_entry[0].total || 0 : 0;
   var total_pos = pnl_entry && pnl_entry[0] ? pnl_entry[0].exposure || 0 : 0;
-  bid_qty = position_size && (position_size * (underlying || baseline_price || mid)) >  (get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : bid_qty;
-  ask_qty = position_size && (position_size * (underlying || baseline_price || mid)) < -(get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : ask_qty;
-  ask_qty = bid_qty < bid_qty_total ? ask_qty += bid_qty_total - bid_qty : ask_qty;
-  bid_qty = ask_qty < ask_qty_total ? bid_qty += ask_qty_total - ask_qty : bid_qty;
+  var reference_price = (underlying || baseline_price || mid);
+  var position_notional = position_size * reference_price;
+  bid_qty = Math.min(bid_qty, (get_pair_options(pair, options).max_position || options.MAX_POSITION) / reference_price);
+  ask_qty = Math.min(ask_qty, (get_pair_options(pair, options).max_position || options.MAX_POSITION) / reference_price);
+  bid_qty = position_size > 0 && reference_price ? Math.min(bid_qty, Math.max(0, ((get_pair_options(pair, options).max_position || options.MAX_POSITION) / reference_price) - position_size)) : bid_qty;
+  ask_qty = position_size < 0 && reference_price ? Math.min(ask_qty, Math.max(0, ((get_pair_options(pair, options).max_position || options.MAX_POSITION) / reference_price) - Math.abs(position_size))) : ask_qty;
+  bid_qty = position_notional && position_notional > (get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : bid_qty;
+  ask_qty = position_notional && position_notional < -(get_pair_options(pair, options).max_position || options.MAX_POSITION) ? 0 : ask_qty;
   bid_qty = pnl && get_pair_options(pair, options).max_drawdown && pnl < -(get_pair_options(pair, options).max_drawdown || options.MAX_DRAWDOWN) ? 0 : bid_qty;
   ask_qty = pnl && get_pair_options(pair, options).max_drawdown && pnl < -(get_pair_options(pair, options).max_drawdown || options.MAX_DRAWDOWN) ? 0 : ask_qty;
   bid_qty = total_pos && total_pos > (get_pair_options(pair, options).max_exposure || options.MAX_EXPOSURE) ? 0 : bid_qty;
@@ -380,7 +462,6 @@ async function submit_orders_in_bulk_internal(client, pair, orders, min_qty, min
     var should_place = rounded_qty >= min_qty && order.qty >= min_qty;
     var pushed = should_place ? final_orders.push(order) : null;
   }
-  var position_size = balance && balance.position ? balance.position.size : undefined;
   var tick_size = get_pair_options(pair, options).floor;
   var best_bid = 0;
   var best_ask = Infinity;
@@ -402,7 +483,7 @@ async function submit_orders_in_bulk_internal(client, pair, orders, min_qty, min
     best_bid = side === 'buy' && price > best_bid ? price : best_bid;
     best_ask = side === 'sell' && price < best_ask ? price : best_ask;
     var pair_symbol = pair;
-    return price && price !== Infinity && !price_already_quoted ? {pair: pair_symbol, qty: e.qty, price: price, side: side.toUpperCase(), ks: should_ks, post_only: should_post_only, leverage: 1, reduce_only: should_reduce_only} : undefined;
+    return price && price !== Infinity && !price_already_quoted ? {pair: pair_symbol, qty: e.qty, price: price, side: side.toUpperCase(), ks: should_ks, post_only: should_post_only, leverage: get_pair_options(pair, options).leverage || options.LEVERAGE || 1, reduce_only: should_reduce_only} : undefined;
   }).filter(e => e);
   var buy_orders = orders_payload.filter(e => e.side === 'BUY');
   var sell_orders = orders_payload.filter(e => e.side === 'SELL');
@@ -428,7 +509,7 @@ function is_still_good_price(client, pair, options, best_bid, best_ask) {
 async function submit_orders_everstrike(pair, client, options, payload, tries) {
   try {
     for (var order of false ? [] : payload.orders) {
-      console.info(get_time_string() + " " + client.name + " is placing a " + order.qty + " " + pair + " " + order.side.toLowerCase() + " order with price " + (order.price || 0).toFixed(6));
+      console.info(get_time_string() + " " + client.name + " is placing a " + order.qty + " " + pair + " " + order.side.toLowerCase() + " order with price " + (order.price || 0).toFixed(6) + " Quota: " + orders_submitted_prev_20s + "/" + options.THIRTY_SECOND_ORDER_LIMIT + " " + orders_submitted_prev_200s + "/" + options.THREE_MINUTE_ORDER_LIMIT);
     }
     return await client.privatePostAuthOrderBulk(payload);
   } catch (e) {
@@ -438,11 +519,11 @@ async function submit_orders_everstrike(pair, client, options, payload, tries) {
 }
 
 async function get_open_orders(client, pair, options, open_orders) {
-  var fetched_orders = open_orders ? null : await client.fetch_open_orders(pair ? get_pair(client, pair) : undefined, undefined, options.ORDERS_RETURN_LIMIT);
+  var fetched_orders = open_orders ? null : await fetch_open_orders(client, pair, options);
   open_orders = open_orders ? open_orders : fetched_orders;
   var has_more = fetched_orders && fetched_orders.length >= options.ORDERS_RETURN_LIMIT;
   while (has_more === true) {
-    fetched_orders = await client.fetch_open_orders(pair ? get_pair(client,pair) : undefined, undefined, options.ORDERS_RETURN_LIMIT, {end: fetched_orders[0].info.time});
+    fetched_orders = await fetch_open_orders(client, pair, options, {end: fetched_orders[0].info.time});
     has_more = fetched_orders && fetched_orders.length >= options.ORDERS_RETURN_LIMIT;
     open_orders = open_orders.concat(fetched_orders);
   }
@@ -472,7 +553,7 @@ async function cancel_orders(client, pair, options, include, exclude, open_order
   var bulk = [];
   for (var order of open_orders) {
     var should_cancel_specific = should_cancel_order(order, include, exclude);
-    if (should_cancel_specific) console.info(get_time_string() + ""  + client.name + " is cancelling a " + order.pair + " order with price " + order.price);
+    if (should_cancel_specific) console.info(get_time_string() + " "  + client.name + " is cancelling a " + order.pair + " order with price " + order.price);
     var pushed_bulk = should_cancel_specific ? bulk.push(order.id) : null;
   }
   var done_bulk = bulk.length > 0 ? cancel_orders_bulk(client, pair, options, bulk) : null;
@@ -521,12 +602,12 @@ async function get_balances(client, pair, options) {
   var balances = await Promise.all(balance_jobs);
   var positions = await Promise.all(position_jobs);
   for (var balance of balances) {
-    if (!balance[base]) continue;
+    if (!balance || !balance[base]) continue;
     balance_base.free += parseFloat(balance[base].free);
     balance_base.used += parseFloat((balance[base].locked + (balance[base].margin || 0)));
   }
   for (var balance of balances) {
-    if (!balance[quote]) continue;
+    if (!balance || !balance[quote]) continue;
     balance_quote.free += parseFloat(balance[quote].free);
     balance_quote.used += parseFloat((balance[quote].locked + (balance[quote].margin || 0)));
   }
@@ -546,28 +627,52 @@ async function get_balances(client, pair, options) {
 }
 
 async function fetch_position_everstrike(client, pair) {
-  var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
-  var positions_json = await positions.json();
-  return positions_json && positions_json.result && positions_json.result.positions && positions_json.result.positions[pair] ? positions_json.result.positions[pair] : undefined;
+  try {
+    var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
+    var positions_json = await positions.json();
+    return positions_json && positions_json.result && positions_json.result.positions && positions_json.result.positions[pair] ? positions_json.result.positions[pair] : undefined;
+  } catch (e) {console.error(e); return undefined; }
 }
 
 async function fetch_positions_everstrike(client) {
-  var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
-  var positions_json = await positions.json();
-  return positions_json && positions_json.result ? positions_json.result.positions : undefined;
+  try {
+    var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
+    var positions_json = await positions.json();
+    return positions_json && positions_json.result ? positions_json.result.positions : undefined;
+  } catch (e) {console.error(e); return undefined; }
 }
 
 async function fetch_balances_everstrike(client) {
-  var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
-  var positions_json = await positions.json();
-  return positions_json && positions_json.result ? positions_json.result.balances : undefined;
+  try {
+    var positions = await fetch(client.urls.api+'/account', {headers: {'x-api-key': client.apiKey}});
+    var positions_json = await positions.json();
+    return positions_json && positions_json.result ? positions_json.result.balances : undefined;
+  } catch (e) {console.error(e); return undefined; }
 }
 
 async function fetch_ticker_everstrike(client, pair) {
-  var ticker = await fetch(client.urls.api+'/ticker');
-  var ticker_json = await ticker.json();
-  var in_programmatic = get_pair(client, pair);
-  return ticker_json[in_programmatic];
+  try {
+    var ticker = await fetch(client.urls.api+'/ticker');
+    var ticker_json = await ticker.json();
+    var in_programmatic = get_pair(client, pair);
+    return ticker_json[in_programmatic];
+  } catch (e) {console.error(e); return undefined; }
+}
+
+async function fetch_vault_everstrike(client, pair) {
+  try {
+    var vault = await fetch(client.urls.api+'/vault');
+    var vault_json = await vault.json();
+    var total = vault_json && vault_json.result && vault_json.result.earnings ? vault_json.result.earnings.total : undefined;
+    var supply = vault_json && vault_json.result && vault_json.result.usd_supply ? vault_json.result.usd_supply : undefined;
+    var rate = total && supply ? 1 + total / supply : undefined;
+    indices[client.name] = indices[client.name] || {};
+    indices[client.name][pair] = indices[client.name][pair] || {};
+    indices[client.name][pair].mark_price = rate || indices[client.name][pair].mark_price;
+    indices[client.name][pair].index_price = indices[client.name][pair].mark_price
+    indices[client.name][pair].adjusted_price = indices[client.name][pair].mark_price;
+    console.info(get_time_string() + " " + client.name + " " + pair + " rate: " + indices[client.name][pair].mark_price);
+  } catch (e) {console.error(e); return undefined; }
 }
 
 function get_pair(client, pair) {
@@ -602,7 +707,7 @@ function subscribe_private_everstrike(client, options) {
     switch (category) {
       case 'order_added': return options.WSS_ORDER_ADDED_FN(client, options, message.result);
       case 'order_cancelled': return options.WSS_ORDER_DONE_FN(client, options, message.result);
-      case 'order_partially_completed': return options.WSS_POSITION_DONE_FN(client, options, message.result);
+      case 'order_partially_completed': return options.WSS_ORDER_DONE_FN(client, options, message.result, true);
       case 'order_completed': return options.WSS_ORDER_DONE_FN(client, options, message.result, true);
       default: return null;
     }
@@ -807,7 +912,7 @@ async function order_added_wss_everstrike(client, options, data) {
   var pair = data && data.order ? data.order.pair: null;
   var transformed = data && data.order && data.order.pair ? data.order.pair : null;
   if (!pair) return;
-    wss_orders[client.name] = wss_orders[client.name] || {};
+  wss_orders[client.name] = wss_orders[client.name] || {};
   wss_orders[client.name][pair] = wss_orders[client.name][pair] || [];
   active_orders[client.name] = active_orders[client.name] || {};
   var already_done = data && data.order && data.order.id && submission_ids[client.name] && submission_ids[client.name][pair] && submission_ids[client.name][pair][data.order.id];
@@ -888,6 +993,7 @@ function get_everstrike(api_key, secret_key, client_id, additional_options) {
   everstrike.fetch_positions = fetch_positions_everstrike;
   everstrike.fetch_balances = fetch_balances_everstrike;
   everstrike.fetch_ticker_native = fetch_ticker_everstrike;
+  everstrike.fetch_vault = fetch_vault_everstrike;
   everstrike.urls.api = process.env.API_URL || (process.env.TRADING_ENV === 'mainnet' ? everstrike.urls.api : everstrike.urls.test || everstrike.urls.api);
   everstrike.options = additional_options;
   everstrike.name = client_id;
