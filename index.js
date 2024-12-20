@@ -341,13 +341,13 @@ async function submit_orders(client, pair, options, price_changed) {
   var leave_on_book_price_map = {};
   var bid_ask_multiplier = indices[client.name][pair].spread || 1;
   var leave_on_book_bids = active_orders[client.name][pair].filter(e => {
-    var maker_bid = bid - tick_size * bid_ask_multiplier * Math.pow(options.NUM_ORDERS, 2) * 1.1;
+    var maker_bid = bid - tick_size * bid_ask_multiplier * Math.pow(options.NUM_ORDERS, 1) * 1.1;
     var include_active_order = !leave_on_book_price_map[e.price] && e.side === 'buy' && e.price <= bid && e.price >= maker_bid;
     leave_on_book_price_map[e.price] = include_active_order ? true : leave_on_book_price_map[e.price];
     return Math.random() < (0.005 * (Math.max(1, 300-orders_submitted_prev_200s) / 500) * (Math.max(1, 30-orders_submitted_prev_20s) / 50)) ? false : include_active_order;
   });
   var leave_on_book_asks = active_orders[client.name][pair].filter(e => {
-    var maker_ask = ask + tick_size * bid_ask_multiplier * Math.pow(options.NUM_ORDERS, 2) * 1.1;
+    var maker_ask = ask + tick_size * bid_ask_multiplier * Math.pow(options.NUM_ORDERS, 1) * 1.1;
     var include_active_order = !leave_on_book_price_map[e.price] && e.side === 'sell' && e.price >= ask && e.price <= maker_ask;
     leave_on_book_price_map[e.price] = include_active_order ? true : leave_on_book_price_map[e.price];
     return Math.random() < (0.005 * (Math.max(1, 300-orders_submitted_prev_200s) / 500) * (Math.max(1, 30-orders_submitted_prev_20s) / 50)) ? false : include_active_order;
