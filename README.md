@@ -517,7 +517,7 @@ The bot has built-in rate-limiting. The default rate limit used by the bot is 50
 "RECV_WINDOW": 5000, // reject order requests that exceed this latency
 ```
 
-Note: The bot may run into rate limits if you try to market make more than 50 pairs at once. If you intend to market make more than 50 pairs, you should run multiple bot instances, and split the pairs between them.
+Note: The bot may run into rate limits if you try to market make more than 30 pairs at once. If you intend to market make more than 30 pairs, you should run multiple bot instances, and split the pairs between them.
 
 ## Errors
 
