@@ -762,7 +762,6 @@ async function subscribe_pair_everstrike(client, pair, options) {
   ws.on('open', () => {
     log_connected_ws(client.client_id, pair);
     pinger = setInterval(() => { ws.send(JSON.stringify({'op': 'status', 'content': 'empty'})); }, options.WS_PING_INTERVAL);
-    ws.send(JSON.stringify({op: 'sub', content: pair+':depth'}));
     ws.send(JSON.stringify({op: 'sub', content: get_perp_pair(pair)+':index'}));
   });
 }
